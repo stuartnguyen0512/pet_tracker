@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/stuart/Workspace/**)",
+      "Bash(npx create-expo-app@latest ExampleProject --template blank-typescript)",
+      "Bash(cp /Users/stuart/Workspace/ExampleProject/.claude/settings.json \"/Users/stuart/Workspace/Example Project/.claude/settings.json\")",
+      "Bash(rm -rf /Users/stuart/Workspace/ExampleProject)",
+      "Bash(npx expo *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
+    ]
+  }
+}
