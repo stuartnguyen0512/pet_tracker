@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
@@ -12,7 +13,7 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/theme';
-import { isValidIsoDate } from '../lib/dates';
+import { fromIsoDate, toIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
@@ -43,13 +44,11 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
 
   const [name, setName] = useState(pet?.name ?? '');
   const [species, setSpecies] = useState<string>(pet?.species ?? 'Dog');
-  const [birthdate, setBirthdate] = useState(pet?.birthdate ?? '');
+  const [birthdate, setBirthdate] = useState<Date | null>(pet?.birthdate ? fromIsoDate(pet.birthdate) : null);
   const [photo, setPhoto] = useState<string | null>(pet?.photo ?? null);
 
   const isEditing = !!pet;
-  const birthdateTrimmed = birthdate.trim();
-  const birthdateValid = birthdateTrimmed.length === 0 || isValidIsoDate(birthdateTrimmed);
-  const canSave = name.trim().length > 0 && birthdateValid;
+  const canSave = name.trim().length > 0;
 
   const onChangePhoto = () => {
     const options = photo
@@ -89,7 +88,7 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
       if (photo) finalPhoto = persistPhoto(photo, 'pets');
       if (originalPhoto) deletePhotoIfExists(originalPhoto);
     }
-    const data = { name: name.trim(), species, birthdate: birthdateTrimmed || null, photo: finalPhoto };
+    const data = { name: name.trim(), species, birthdate: birthdate ? toIsoDate(birthdate) : null, photo: finalPhoto };
     try {
       if (pet) {
         await updatePet(pet.id, data);
@@ -186,21 +185,27 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
             </View>
           </View>
           <View style={styles.divider} />
-          <View style={styles.field}>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>
-                BIRTHDATE <Text style={styles.fieldLabelOptional}>(optional)</Text>
-              </Text>
-              <TextInput
-                value={birthdate}
-                onChangeText={setBirthdate}
-                placeholder="YYYY-MM-DD"
-                style={styles.dateInput}
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
-            {birthdateTrimmed.length > 0 && !birthdateValid && (
-              <Text style={styles.fieldError}>Enter a valid date as YYYY-MM-DD</Text>
+          <View style={[styles.field, styles.fieldRow]}>
+            <Text style={styles.fieldLabel}>
+              BIRTHDATE <Text style={styles.fieldLabelOptional}>(optional)</Text>
+            </Text>
+            {birthdate ? (
+              <View style={styles.birthdateRow}>
+                <DateTimePicker
+                  value={birthdate}
+                  mode="date"
+                  display="compact"
+                  maximumDate={new Date()}
+                  onChange={(_, selected) => selected && setBirthdate(selected)}
+                />
+                <Pressable onPress={() => setBirthdate(null)} hitSlop={8}>
+                  <Text style={styles.clearDate}>Clear</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable onPress={() => setBirthdate(new Date())}>
+                <Text style={styles.setDateLink}>Set date</Text>
+              </Pressable>
             )}
           </View>
         </View>
@@ -295,20 +300,23 @@ const styles = StyleSheet.create({
   fieldLabelOptional: {
     textTransform: 'none',
   },
-  fieldError: {
-    fontSize: 12,
-    color: colors.danger,
-    marginTop: 6,
-  },
   input: {
     fontSize: 17,
     color: colors.text,
     padding: 0,
   },
-  dateInput: {
+  birthdateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  clearDate: {
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  setDateLink: {
     fontSize: 16,
-    color: colors.text,
-    padding: 0,
+    color: colors.accent,
   },
   divider: {
     height: 0.5,

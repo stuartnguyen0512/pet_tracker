@@ -107,6 +107,7 @@ export default function PetProfileScreen() {
         showsHorizontalScrollIndicator={false}
         data={filters}
         keyExtractor={f => f}
+        style={styles.filterList}
         contentContainerStyle={styles.filterRow}
         renderItem={({ item }) => {
           const active = filter === item;
@@ -258,6 +259,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 3,
   },
+  filterList: {
+    // RN's horizontal FlatList/ScrollView defaults to flexGrow: 1, which
+    // makes it stretch to fill leftover vertical space in this flex-column
+    // screen — pin it back to its intrinsic (chip) height.
+    flexGrow: 0,
+  },
   filterRow: {
     gap: 8,
     paddingHorizontal: 16,
@@ -352,7 +359,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   emptyState: {
-    flex: 1,
     alignItems: 'center',
     paddingTop: 56,
     paddingHorizontal: 24,

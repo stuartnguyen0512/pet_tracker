@@ -1,4 +1,5 @@
 import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
@@ -13,7 +14,7 @@ import {
 } from 'react-native';
 import { colors } from '../constants/theme';
 import { RECORD_TYPES, recordTypeMeta } from '../constants/recordTypes';
-import { isValidIsoDate, todayISO } from '../lib/dates';
+import { fromIsoDate, toIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
@@ -48,7 +49,7 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
   const initialWeight = record?.type === 'Weight' ? splitWeightDetails(record.details) : { value: '', unit: 'kg' as const };
 
   const [type, setType] = useState<RecordType>(record?.type ?? 'Vaccine');
-  const [date, setDate] = useState(record?.date ?? todayISO());
+  const [date, setDate] = useState<Date>(record ? fromIsoDate(record.date) : new Date());
   const [details, setDetails] = useState(record && record.type !== 'Weight' ? record.details : '');
   const [weightValue, setWeightValue] = useState(initialWeight.value);
   const [unit, setUnit] = useState<'kg' | 'lb'>(initialWeight.unit);
@@ -56,9 +57,7 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
 
   const isEditing = !!record;
   const isWeight = type === 'Weight';
-  const dateTrimmed = date.trim();
-  const dateValid = isValidIsoDate(dateTrimmed);
-  const canSave = dateTrimmed.length > 0 && dateValid && (!isWeight || weightValue.trim().length > 0);
+  const canSave = !isWeight || weightValue.trim().length > 0;
 
   const onChangePhoto = () => {
     const options = photo
@@ -92,7 +91,7 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
       if (photo) finalPhoto = persistPhoto(photo, 'records');
       if (originalPhoto) deletePhotoIfExists(originalPhoto);
     }
-    const data = { petId, type, date: dateTrimmed, details: finalDetails, photo: finalPhoto };
+    const data = { petId, type, date: toIsoDate(date), details: finalDetails, photo: finalPhoto };
     try {
       if (record) {
         await updateRecord(record.id, data);
@@ -168,20 +167,15 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
         </View>
 
         <View style={styles.card}>
-          <View style={styles.field}>
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>DATE</Text>
-              <TextInput
-                value={date}
-                onChangeText={setDate}
-                placeholder="YYYY-MM-DD"
-                style={styles.dateInput}
-                placeholderTextColor={colors.textFaint}
-              />
-            </View>
-            {dateTrimmed.length > 0 && !dateValid && (
-              <Text style={styles.fieldError}>Enter a valid date as YYYY-MM-DD</Text>
-            )}
+          <View style={[styles.field, styles.fieldRow]}>
+            <Text style={styles.fieldLabel}>DATE</Text>
+            <DateTimePicker
+              value={date}
+              mode="date"
+              display="compact"
+              onChange={(_, selected) => selected && setDate(selected)}
+              style={styles.datePicker}
+            />
           </View>
           <View style={styles.divider} />
 
@@ -331,15 +325,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
   },
-  fieldError: {
-    fontSize: 12,
-    color: colors.danger,
-    marginTop: 6,
-  },
-  dateInput: {
-    fontSize: 16,
-    color: colors.text,
-    padding: 0,
+  datePicker: {
     marginLeft: 'auto',
   },
   weightInput: {
