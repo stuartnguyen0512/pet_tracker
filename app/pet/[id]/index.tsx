@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActionSheetIOS, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../../constants/theme';
@@ -24,13 +24,17 @@ export default function PetProfileScreen() {
   const { pets, listRecordsForPet } = usePets();
   const { showToast } = useToast();
   const [records, setRecords] = useState<HealthRecord[]>([]);
+  const [recordsLoaded, setRecordsLoaded] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('All');
 
   const pet = pets.find(p => p.id === id);
 
   const refetch = useCallback(() => {
     if (!id) return;
-    listRecordsForPet(id).then(setRecords);
+    listRecordsForPet(id).then(recs => {
+      setRecords(recs);
+      setRecordsLoaded(true);
+    });
   }, [id, listRecordsForPet]);
 
   useFocusEffect(refetch);
@@ -103,6 +107,7 @@ export default function PetProfileScreen() {
         showsHorizontalScrollIndicator={false}
         data={filters}
         keyExtractor={f => f}
+        style={styles.filterList}
         contentContainerStyle={styles.filterRow}
         renderItem={({ item }) => {
           const active = filter === item;
@@ -119,7 +124,11 @@ export default function PetProfileScreen() {
         }}
       />
 
-      {groups.length === 0 ? (
+      {!recordsLoaded ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : groups.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconCircle}>
             <Text style={styles.emptyIcon}>📋</Text>
@@ -250,6 +259,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: 3,
   },
+  filterList: {
+    // RN's horizontal FlatList/ScrollView defaults to flexGrow: 1, which
+    // makes it stretch to fill leftover vertical space in this flex-column
+    // screen — pin it back to its intrinsic (chip) height.
+    flexGrow: 0,
+  },
   filterRow: {
     gap: 8,
     paddingHorizontal: 16,
@@ -344,7 +359,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   emptyState: {
-    flex: 1,
     alignItems: 'center',
     paddingTop: 56,
     paddingHorizontal: 24,

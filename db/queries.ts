@@ -1,3 +1,4 @@
+import * as Crypto from 'expo-crypto';
 import { SQLiteDatabase } from 'expo-sqlite';
 import { HealthRecord, Pet, RecordType } from '../types';
 
@@ -38,7 +39,7 @@ function rowToRecord(row: RecordRow): HealthRecord {
 }
 
 function generateId(): string {
-  return globalThis.crypto.randomUUID();
+  return Crypto.randomUUID();
 }
 
 // ---------------------------------------------------------------------------
