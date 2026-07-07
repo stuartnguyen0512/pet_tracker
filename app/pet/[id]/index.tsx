@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActionSheetIOS, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../../constants/theme';
@@ -24,13 +24,17 @@ export default function PetProfileScreen() {
   const { pets, listRecordsForPet } = usePets();
   const { showToast } = useToast();
   const [records, setRecords] = useState<HealthRecord[]>([]);
+  const [recordsLoaded, setRecordsLoaded] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('All');
 
   const pet = pets.find(p => p.id === id);
 
   const refetch = useCallback(() => {
     if (!id) return;
-    listRecordsForPet(id).then(setRecords);
+    listRecordsForPet(id).then(recs => {
+      setRecords(recs);
+      setRecordsLoaded(true);
+    });
   }, [id, listRecordsForPet]);
 
   useFocusEffect(refetch);
@@ -119,7 +123,11 @@ export default function PetProfileScreen() {
         }}
       />
 
-      {groups.length === 0 ? (
+      {!recordsLoaded ? (
+        <View style={styles.emptyState}>
+          <ActivityIndicator color={colors.accent} />
+        </View>
+      ) : groups.length === 0 ? (
         <View style={styles.emptyState}>
           <View style={styles.emptyIconCircle}>
             <Text style={styles.emptyIcon}>📋</Text>

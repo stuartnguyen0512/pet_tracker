@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { colors } from '../constants/theme';
 import { RECORD_TYPES, recordTypeMeta } from '../constants/recordTypes';
-import { todayISO } from '../lib/dates';
+import { isValidIsoDate, todayISO } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
@@ -56,7 +56,9 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
 
   const isEditing = !!record;
   const isWeight = type === 'Weight';
-  const canSave = date.trim().length > 0 && (!isWeight || weightValue.trim().length > 0);
+  const dateTrimmed = date.trim();
+  const dateValid = isValidIsoDate(dateTrimmed);
+  const canSave = dateTrimmed.length > 0 && dateValid && (!isWeight || weightValue.trim().length > 0);
 
   const onChangePhoto = () => {
     const options = photo
@@ -70,13 +72,8 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
       async buttonIndex => {
         if (buttonIndex === 0 || buttonIndex === 1) {
           const uri = await pickImage(buttonIndex === 0 ? 'camera' : 'library');
-          if (uri) {
-            const stored = persistPhoto(uri, 'records');
-            if (photo) deletePhotoIfExists(photo);
-            setPhoto(stored);
-          }
+          if (uri) setPhoto(uri);
         } else if (photo && buttonIndex === 2) {
-          deletePhotoIfExists(photo);
           setPhoto(null);
         }
       },
@@ -86,14 +83,28 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
   const onSave = async () => {
     if (!canSave) return;
     const finalDetails = isWeight ? `${weightValue.trim()} ${unit}` : details.trim();
-    const data = { petId, type, date: date.trim(), details: finalDetails, photo };
-    if (record) {
-      await updateRecord(record.id, data);
-    } else {
-      await createRecord(data);
+    // Photo is only moved into permanent storage (and the old one cleaned up)
+    // once the user actually commits — picking a new photo and then hitting
+    // Cancel must leave the original file and DB row untouched.
+    const originalPhoto = record?.photo ?? null;
+    let finalPhoto = photo;
+    if (photo !== originalPhoto) {
+      if (photo) finalPhoto = persistPhoto(photo, 'records');
+      if (originalPhoto) deletePhotoIfExists(originalPhoto);
     }
-    router.back();
-    showToast('Record saved');
+    const data = { petId, type, date: dateTrimmed, details: finalDetails, photo: finalPhoto };
+    try {
+      if (record) {
+        await updateRecord(record.id, data);
+      } else {
+        await createRecord(data);
+      }
+      router.back();
+      showToast('Record saved');
+    } catch (e) {
+      console.error('[RecordFormScreen] save failed:', e);
+      showToast('Could not save — please try again');
+    }
   };
 
   const onDelete = () => {
@@ -107,10 +118,15 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
       },
       async buttonIndex => {
         if (buttonIndex === 0) {
-          await deleteRecord(record.id);
-          if (record.photo) deletePhotoIfExists(record.photo);
-          router.back();
-          showToast('Record deleted');
+          try {
+            await deleteRecord(record.id);
+            if (record.photo) deletePhotoIfExists(record.photo);
+            router.back();
+            showToast('Record deleted');
+          } catch (e) {
+            console.error('[RecordFormScreen] delete failed:', e);
+            showToast('Could not delete — please try again');
+          }
         }
       },
     );
@@ -152,15 +168,20 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
         </View>
 
         <View style={styles.card}>
-          <View style={[styles.field, styles.fieldRow]}>
-            <Text style={styles.fieldLabel}>DATE</Text>
-            <TextInput
-              value={date}
-              onChangeText={setDate}
-              placeholder="YYYY-MM-DD"
-              style={styles.dateInput}
-              placeholderTextColor={colors.textFaint}
-            />
+          <View style={styles.field}>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>DATE</Text>
+              <TextInput
+                value={date}
+                onChangeText={setDate}
+                placeholder="YYYY-MM-DD"
+                style={styles.dateInput}
+                placeholderTextColor={colors.textFaint}
+              />
+            </View>
+            {dateTrimmed.length > 0 && !dateValid && (
+              <Text style={styles.fieldError}>Enter a valid date as YYYY-MM-DD</Text>
+            )}
           </View>
           <View style={styles.divider} />
 
@@ -309,6 +330,11 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: 12,
     color: colors.textSecondary,
+  },
+  fieldError: {
+    fontSize: 12,
+    color: colors.danger,
+    marginTop: 6,
   },
   dateInput: {
     fontSize: 16,

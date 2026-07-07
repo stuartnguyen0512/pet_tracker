@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/theme';
+import { isValidIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
@@ -37,7 +38,7 @@ async function pickImage(source: 'camera' | 'library'): Promise<string | null> {
 
 export function PetFormScreen({ pet }: { pet?: Pet }) {
   const router = useRouter();
-  const { createPet, updatePet, deletePet } = usePets();
+  const { createPet, updatePet, deletePet, listRecordsForPet, pets, unlocked } = usePets();
   const { showToast } = useToast();
 
   const [name, setName] = useState(pet?.name ?? '');
@@ -46,7 +47,9 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
   const [photo, setPhoto] = useState<string | null>(pet?.photo ?? null);
 
   const isEditing = !!pet;
-  const canSave = name.trim().length > 0;
+  const birthdateTrimmed = birthdate.trim();
+  const birthdateValid = birthdateTrimmed.length === 0 || isValidIsoDate(birthdateTrimmed);
+  const canSave = name.trim().length > 0 && birthdateValid;
 
   const onChangePhoto = () => {
     const options = photo
@@ -60,13 +63,8 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
       async buttonIndex => {
         if (buttonIndex === 0 || buttonIndex === 1) {
           const uri = await pickImage(buttonIndex === 0 ? 'camera' : 'library');
-          if (uri) {
-            const stored = persistPhoto(uri, 'pets');
-            if (photo) deletePhotoIfExists(photo);
-            setPhoto(stored);
-          }
+          if (uri) setPhoto(uri);
         } else if (photo && buttonIndex === 2) {
-          deletePhotoIfExists(photo);
           setPhoto(null);
         }
       },
@@ -75,13 +73,34 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
 
   const onSave = async () => {
     if (!canSave) return;
-    const data = { name: name.trim(), species, birthdate: birthdate.trim() || null, photo };
-    if (pet) {
-      await updatePet(pet.id, data);
-    } else {
-      await createPet(data);
+    // Re-check the paywall gate here too, not just at the "+ Add Pet" button —
+    // a double-tap can push this screen twice before the first save commits,
+    // and app/index.tsx's check alone can't catch that.
+    if (!pet && pets.length >= 1 && !unlocked) {
+      router.replace('/paywall');
+      return;
     }
-    router.back();
+    // Photo is only moved into permanent storage (and the old one cleaned up)
+    // once the user actually commits — picking a new photo and then hitting
+    // Cancel must leave the original file and DB row untouched.
+    const originalPhoto = pet?.photo ?? null;
+    let finalPhoto = photo;
+    if (photo !== originalPhoto) {
+      if (photo) finalPhoto = persistPhoto(photo, 'pets');
+      if (originalPhoto) deletePhotoIfExists(originalPhoto);
+    }
+    const data = { name: name.trim(), species, birthdate: birthdateTrimmed || null, photo: finalPhoto };
+    try {
+      if (pet) {
+        await updatePet(pet.id, data);
+      } else {
+        await createPet(data);
+      }
+      router.back();
+    } catch (e) {
+      console.error('[PetFormScreen] save failed:', e);
+      showToast('Could not save — please try again');
+    }
   };
 
   const onDelete = () => {
@@ -95,9 +114,17 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
       },
       async buttonIndex => {
         if (buttonIndex === 0) {
-          await deletePet(pet.id);
-          showToast(`${pet.name} deleted`);
-          router.dismissTo('/');
+          try {
+            const records = await listRecordsForPet(pet.id);
+            records.forEach(r => deletePhotoIfExists(r.photo));
+            deletePhotoIfExists(pet.photo);
+            await deletePet(pet.id);
+            showToast(`${pet.name} deleted`);
+            router.dismissTo('/');
+          } catch (e) {
+            console.error('[PetFormScreen] delete failed:', e);
+            showToast('Could not delete — please try again');
+          }
         }
       },
     );
@@ -159,17 +186,22 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
             </View>
           </View>
           <View style={styles.divider} />
-          <View style={[styles.field, styles.fieldRow]}>
-            <Text style={styles.fieldLabel}>
-              BIRTHDATE <Text style={styles.fieldLabelOptional}>(optional)</Text>
-            </Text>
-            <TextInput
-              value={birthdate}
-              onChangeText={setBirthdate}
-              placeholder="YYYY-MM-DD"
-              style={styles.dateInput}
-              placeholderTextColor={colors.textFaint}
-            />
+          <View style={styles.field}>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>
+                BIRTHDATE <Text style={styles.fieldLabelOptional}>(optional)</Text>
+              </Text>
+              <TextInput
+                value={birthdate}
+                onChangeText={setBirthdate}
+                placeholder="YYYY-MM-DD"
+                style={styles.dateInput}
+                placeholderTextColor={colors.textFaint}
+              />
+            </View>
+            {birthdateTrimmed.length > 0 && !birthdateValid && (
+              <Text style={styles.fieldError}>Enter a valid date as YYYY-MM-DD</Text>
+            )}
           </View>
         </View>
 
@@ -262,6 +294,11 @@ const styles = StyleSheet.create({
   },
   fieldLabelOptional: {
     textTransform: 'none',
+  },
+  fieldError: {
+    fontSize: 12,
+    color: colors.danger,
+    marginTop: 6,
   },
   input: {
     fontSize: 17,

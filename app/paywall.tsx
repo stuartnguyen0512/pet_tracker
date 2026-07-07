@@ -23,9 +23,14 @@ export default function PaywallScreen() {
     // NOTE: this only flips a locally-persisted flag — there is no StoreKit /
     // in-app-purchase integration wired up yet. Real payment collection is a
     // separate follow-up (needs an IAP library + App Store Connect product).
-    await unlockPets();
-    showToast('Unlocked — add your pet');
-    router.replace('/pet/new');
+    try {
+      await unlockPets();
+      showToast('Unlocked — add your pet');
+      router.replace('/pet/new');
+    } catch (e) {
+      console.error('[PaywallScreen] unlock failed:', e);
+      showToast('Could not unlock — please try again');
+    }
   };
 
   const onRestore = () => {

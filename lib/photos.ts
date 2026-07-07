@@ -1,3 +1,4 @@
+import * as Crypto from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 
 // Copies a picked/captured image (a cache/tmp URI from expo-image-picker) into
@@ -8,7 +9,7 @@ export function persistPhoto(sourceUri: string, subdir: 'pets' | 'records'): str
   if (!dir.exists) dir.create({ intermediates: true });
 
   const src = new File(sourceUri);
-  const dest = new File(dir, `${globalThis.crypto.randomUUID()}${src.extension || '.jpg'}`);
+  const dest = new File(dir, `${Crypto.randomUUID()}${src.extension || '.jpg'}`);
   src.copy(dest);
   return dest.uri;
 }
