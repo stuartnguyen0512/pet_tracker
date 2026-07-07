@@ -25,6 +25,12 @@ const MIGRATIONS: Record<number, string> = {
       FOREIGN KEY (pet_id) REFERENCES pets(id) ON DELETE CASCADE
     );
   `,
+  2: `
+    CREATE TABLE settings (
+      key   TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
+  `,
 };
 
 const LATEST_VERSION = Math.max(...Object.keys(MIGRATIONS).map(Number));

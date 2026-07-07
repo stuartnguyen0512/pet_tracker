@@ -8,7 +8,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Attach photos from your library to a pet's profile or health record.",
+        "NSCameraUsageDescription": "Take a photo to attach to a pet's profile or health record."
+      }
     },
     "android": {
       "adaptiveIcon": {
