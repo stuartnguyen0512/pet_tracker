@@ -29,8 +29,14 @@ type PetsContextType = {
   // Record operations — thin DB pass-throughs; callers own their own state
   createRecord: (data: Omit<HealthRecord, 'id'>) => Promise<HealthRecord>;
   listRecordsForPet: (petId: string) => Promise<HealthRecord[]>;
+  getRecord: (id: string) => Promise<HealthRecord | null>;
   updateRecord: (id: string, data: Omit<HealthRecord, 'id'>) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
+
+  // Pet-count paywall (PRD 7.5) — a locally-persisted flag, not a real
+  // StoreKit purchase. Wiring an actual in-app-purchase flow is separate work.
+  unlocked: boolean;
+  unlockPets: () => Promise<void>;
 };
 
 // ---------------------------------------------------------------------------
@@ -52,6 +58,7 @@ export function usePets(): PetsContextType {
 export function PetsProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<SQLiteDatabase | null>(null);
   const [pets, setPets] = useState<Pet[]>([]);
+  const [unlocked, setUnlocked] = useState(false);
 
   // Open the database and run migrations once on mount.
   // Children are blocked from rendering until the DB is ready so no screen
@@ -63,6 +70,7 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
         const database = await initDatabase();
         if (!active) return;
         setPets(await Q.listPets(database));
+        setUnlocked((await Q.getSetting(database, 'unlocked')) === '1');
         setDb(database);
       } catch (e) {
         console.error('[PetsProvider] DB init failed:', e);
@@ -99,6 +107,10 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
     (petId: string) => Q.listRecordsForPet(db!, petId),
     [db],
   );
+  const getRecord = useCallback(
+    (id: string) => Q.getRecord(db!, id),
+    [db],
+  );
   const updateRecord = useCallback(
     (id: string, data: Omit<HealthRecord, 'id'>) => Q.updateRecord(db!, id, data),
     [db],
@@ -107,6 +119,11 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
     (id: string) => Q.deleteRecord(db!, id),
     [db],
   );
+
+  const unlockPets = useCallback(async (): Promise<void> => {
+    await Q.setSetting(db!, 'unlocked', '1');
+    setUnlocked(true);
+  }, [db]);
 
   // Block render until DB is open
   if (!db) return null;
@@ -120,8 +137,11 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
         deletePet,
         createRecord,
         listRecordsForPet,
+        getRecord,
         updateRecord,
         deleteRecord,
+        unlocked,
+        unlockPets,
       }}
     >
       {children}
