@@ -60,3 +60,7 @@ app/index.tsx            Home screen (currently a stub — pets list goes here)
 ### Photos
 
 `expo-image-picker` selects/captures photos; `expo-file-system` persists them to the app sandbox. Photo fields on both `Pet` and `HealthRecord` are nullable strings (local file URIs). `expo-sharing` is used for the JSON data export (PRD §7.6).
+
+## Monetization constraint
+
+**No subscription model — not now, not planned.** The only monetization is a one-time, non-consumable unlock (~$7.99) that removes the 1-pet cap (PRD §4, §7.5, §10). `store/pets.tsx`'s `unlocked` flag and `unlockPets()` already implement this correctly as a simple persisted boolean — not a subscription entitlement check. Do not introduce StoreKit auto-renewable subscriptions, subscription tiers, or recurring billing of any kind without this constraint being explicitly revisited first.
