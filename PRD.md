@@ -1,8 +1,8 @@
 # Product Requirements Document
 ## Pet Health & Vet Record Tracker (iOS MVP)
 **Author:** Min
-**Status:** Draft v1.1
-**Last updated:** July 6, 2026
+**Status:** Draft v1.2
+**Last updated:** July 7, 2026
 
 **Changelog from v1:**
 - Resolved contradiction between Section 6 and 7.5 (multi-pet paywall wording)
@@ -11,6 +11,9 @@
 - Tightened v1 timeline framing to include dogfooding time
 - Resolved weight-tracking open question (plain list, confirmed)
 - Added App Store Connect note for conversion metric (no SDK needed)
+
+**Changelog v1.2:**
+- Elevated "no subscription" from monetization framing (Sections 6/7.5/10) into an explicit Non-Goal constraint (Section 4) — no code changed, documentation only
 
 ---
 
@@ -39,6 +42,7 @@ There's a clear gap for a simple, offline-reliable, privacy-respecting tracker t
 - Vet-facing tools, sharing, or multi-user access
 - OCR, document scanning, or AI features
 - Android version — note: the scaffolded repo includes Expo's default Android config (this is boilerplate from `create-expo-app`, not a deliberate build target). No v1 time should go toward polishing or testing the Android build.
+- **Subscription monetization, in any form** — no recurring billing, no auto-renewing IAP, no tiered plans. The only monetization is the one-time ~$7.99 unlock described in Sections 7.5 and 10. This is a hard constraint for now, not an oversight — if it's ever revisited, it needs to be a deliberate decision, not scope creep introduced by a later feature or agent.
 
 ## 5. Target User
 Pet owners who currently track health info via memory, paper, or notes apps, and want something purpose-built but simple — not a full veterinary practice management platform.
