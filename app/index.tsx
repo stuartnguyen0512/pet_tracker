@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../constants/theme';
 import { ageStr } from '../lib/dates';
+import { hasSeenOnboarding } from '../lib/onboarding';
 import { initialOf, speciesTint } from '../lib/petDisplay';
 import { usePets } from '../store/pets';
 import { Pet } from '../types';
@@ -10,6 +12,24 @@ import { Pet } from '../types';
 export default function PetListScreen() {
   const router = useRouter();
   const { pets, unlocked } = usePets();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  // Runs once per app launch — on a brand new install this redirects to the
+  // onboarding intro before the pet list ever renders. Once seen, this check
+  // is a no-op on every later launch.
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const seen = await hasSeenOnboarding();
+      if (!active) return;
+      if (seen) {
+        setOnboardingChecked(true);
+      } else {
+        router.replace('/onboarding');
+      }
+    })();
+    return () => { active = false; };
+  }, []);
 
   const onAddPet = () => {
     if (pets.length >= 1 && !unlocked) {
@@ -36,6 +56,8 @@ export default function PetListScreen() {
       <Text style={styles.chevron}>›</Text>
     </Pressable>
   );
+
+  if (!onboardingChecked) return null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
