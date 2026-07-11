@@ -1,14 +1,13 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import { Session, User } from '@supabase/supabase-js';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
 
-// Placeholder, UI-only stand-in for a real Supabase auth session — in-memory
-// only, not persisted, not backed by any account or token. It exists so the
-// Login/Signup/Settings screens can agree on "logged in or not" while the
-// real session wiring is built separately. Swap this out once real auth
-// exists.
 type UiSessionContextType = {
+  session: Session | null;
+  user: User | null;
   isLoggedIn: boolean;
-  logIn: () => void;
-  logOut: () => void;
+  isInitializing: boolean;
+  logOut: () => Promise<void>;
 };
 
 const UiSessionContext = createContext<UiSessionContextType | null>(null);
@@ -20,13 +19,40 @@ export function useUiSession(): UiSessionContextType {
 }
 
 export function UiSessionProvider({ children }: { children: React.ReactNode }) {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  const logIn = useCallback(() => setIsLoggedIn(true), []);
-  const logOut = useCallback(() => setIsLoggedIn(false), []);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+      setIsInitializing(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Sign-out failures are left to the caller to report — we don't touch
+  // local state here, letting the SIGNED_OUT event (if it fires) be the
+  // single source of truth instead of guessing at the outcome.
+  const logOut = useCallback(async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  }, []);
 
   return (
-    <UiSessionContext.Provider value={{ isLoggedIn, logIn, logOut }}>
+    <UiSessionContext.Provider
+      value={{
+        session,
+        user: session?.user ?? null,
+        isLoggedIn: session !== null,
+        isInitializing,
+        logOut,
+      }}
+    >
       {children}
     </UiSessionContext.Provider>
   );

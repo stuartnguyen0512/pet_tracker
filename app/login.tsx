@@ -11,26 +11,38 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/theme';
-import { useUiSession } from '../store/uiSession';
+import { supabase } from '../lib/supabaseClient';
+import { useToast } from '../store/toast';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const { logIn } = useUiSession();
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const canSubmit = email.trim().length > 0 && password.length > 0;
+  const canSubmit = email.trim().length > 0 && password.length > 0 && !isSubmitting;
 
-  const onLogIn = () => {
+  const onLogIn = async () => {
     if (!canSubmit) return;
-    // UI only — no auth call wired up yet. A returning user goes straight in.
-    logIn();
-    router.replace('/');
+    setIsSubmitting(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) {
+        showToast('Invalid email or password');
+        return;
+      }
+      router.replace('/');
+    } catch (e) {
+      console.error('[Login] sign in failed:', e);
+      showToast('Could not log in — please try again');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const onContinueWithApple = () => {
-    logIn();
-    router.replace('/');
+    showToast('Apple Sign In coming soon');
   };
 
   return (
@@ -92,7 +104,7 @@ export default function LoginScreen() {
           <View style={styles.dividerLine} />
         </View>
 
-        <Pressable style={styles.appleButton} onPress={onContinueWithApple}>
+        <Pressable style={[styles.appleButton, styles.appleButtonDisabled]} onPress={onContinueWithApple}>
           <Text style={styles.appleIcon}>􀣺</Text>
           <Text style={styles.appleButtonText}>Continue with Apple</Text>
         </Pressable>
@@ -212,6 +224,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     marginTop: 24,
+  },
+  appleButtonDisabled: {
+    opacity: 0.4,
   },
   appleIcon: {
     fontSize: 18,
