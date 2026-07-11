@@ -4,17 +4,37 @@ import { colors } from '../constants/theme';
 import { exportJson } from '../lib/export';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
+import { useUiSession } from '../store/uiSession';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { pets, listRecordsForPet, unlocked } = usePets();
   const { showToast } = useToast();
+  const { isLoggedIn, logOut } = useUiSession();
 
   const onExportAll = async () => {
     showToast('Preparing…');
     const records = (await Promise.all(pets.map(p => listRecordsForPet(p.id)))).flat();
     const ok = await exportJson('pet-records', { pets, records });
     showToast(ok ? 'Export saved' : 'Sharing unavailable');
+  };
+
+  const onAccountRowPress = () => {
+    if (isLoggedIn) {
+      logOut();
+      showToast('Logged out');
+    } else {
+      router.push('/login');
+    }
+  };
+
+  const onSyncNow = () => {
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+    // UI only — no Supabase push/pull wired up yet.
+    showToast('Nothing to sync yet');
   };
 
   return (
@@ -34,16 +54,28 @@ export default function SettingsScreen() {
             <Text style={styles.privacyTitle}>Your data stays on your device</Text>
           </View>
           <Text style={styles.privacyBody}>
-            Everything you log is stored only on this iPhone. No account, no cloud, no tracking.
-            Back it up anytime by exporting a file.
+            Everything you log is stored on this iPhone first and works fully offline. Signing in
+            and syncing is optional — back up anytime by exporting a file, too.
           </Text>
         </View>
+
+        <Text style={styles.sectionLabel}>Account</Text>
+        <Pressable style={styles.accountRow} onPress={onAccountRowPress}>
+          <Text style={styles.accountRowText}>{isLoggedIn ? 'Log Out' : 'Log In or Sign Up'}</Text>
+          {!isLoggedIn && <Text style={styles.chevron}>›</Text>}
+        </Pressable>
+        <Text style={styles.exportHint}>Sync your pets and records across your own devices.</Text>
 
         <Text style={styles.sectionLabel}>Data</Text>
         <Pressable style={styles.exportButton} onPress={onExportAll}>
           <Text style={styles.exportButtonText}>Export all data</Text>
         </Pressable>
         <Text style={styles.exportHint}>Saves a file you can share or back up.</Text>
+
+        <Pressable style={styles.syncButton} onPress={onSyncNow}>
+          <Text style={styles.syncButtonText}>Sync Now</Text>
+        </Pressable>
+        <Text style={styles.exportHint}>{isLoggedIn ? 'Never synced.' : 'Log in to enable sync.'}</Text>
 
         <Text style={styles.sectionLabel}>About</Text>
         <View style={styles.aboutCard}>
@@ -132,6 +164,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingBottom: 8,
   },
+  accountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.card,
+    borderRadius: 12,
+    padding: 14,
+  },
+  accountRowText: {
+    fontSize: 17,
+    fontWeight: '500',
+    color: colors.accent,
+  },
   exportButton: {
     height: 50,
     borderRadius: 12,
@@ -141,6 +186,20 @@ const styles = StyleSheet.create({
   },
   exportButtonText: {
     color: colors.card,
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  syncButton: {
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderWidth: 0.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncButtonText: {
+    color: colors.accent,
     fontSize: 17,
     fontWeight: '600',
   },
