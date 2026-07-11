@@ -112,6 +112,6 @@ Supabase Storage bucket, scoped per account. On sync, dirty local photos upload;
 
 ### Open questions (see PRD.md §13 for full context — do not resolve unilaterally in code)
 
-- ~~Whether local data is cleared or retained on logout~~ — resolved 2026-07-11: local data is **cleared immediately on logout**.
-- ~~Where the "Sync Now" control lives in the UI~~ — resolved 2026-07-11: left to the UI agent's judgment (Settings screen, next to "Export All Data", is the lower-risk default).
-- Whether silent last-write-wins is acceptable long-term or needs a conflict UI later. (still open)
+- Whether local data is cleared or retained on logout.
+- Where the "Sync Now" control lives in the UI.
+- Whether silent last-write-wins is acceptable long-term or needs a conflict UI later.

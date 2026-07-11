@@ -167,8 +167,8 @@ Updated framing: "I built a pet health app with no subscription, ever — and it
 
 ## 13. Open Questions
 
-- ~~What happens to local data on logout~~ — **Resolved 2026-07-11: cleared immediately on logout.** Tradeoff: a logged-out user with no signal has no local data until they re-login and pull, a slight tension with the "always usable offline" pitch (§2, §3) — accepted as a deliberate privacy-forward call.
-- ~~Where does "Sync Now" live in the UI~~ — **Resolved 2026-07-11: left to the UI agent's judgment**, Settings screen (next to "Export All Data") is the lower-risk default.
+- What happens to local data on logout — cleared immediately, or retained until the next login/sync? Needs a decision before building the auth flow.
+- Where does "Sync Now" live in the UI — the existing Settings screen, or a persistent control on the pet list? A UX call for Min.
 - Is silent last-write-wins conflict handling acceptable long-term, or should the app ever surface "your other device also changed this" to the user? Silent is simpler and is v2's default; revisit if it causes real data loss during dogfooding.
 - What's a realistic v2 timeline? v1's 4-5 week estimate does not carry over given the added scope (auth, sync engine, storage, RLS) — needs its own honest estimate before committing to a date.
 
