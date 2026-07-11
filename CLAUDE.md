@@ -22,6 +22,16 @@ There is no test suite yet. There is no lint script yet.
 
 **Do not run `npx expo start` automatically after making changes** — give the user the command to run instead.
 
+## Git workflow
+
+Every agent (UI, Data Layer, Integration/Fix-errors, or any other) does its work on its own branch — never commit directly to `main`.
+
+- **Branch naming**: `<agent-role>/<short-description>` — e.g. `ui/paywall-copy`, `data/sync-migration`, `integration/wire-auth-session`.
+- **Flow**: branch from `main` → do the work → push → **delete the local branch immediately after the push succeeds**. The pushed remote branch is what preserves the work from here.
+- **Do not delete the remote branch.** Min reviews the PR and deletes the remote branch himself once it's merged into `main`. Agents only ever clean up their local copy.
+
+Existing branches on `origin` (`feat/auth-integration`, `feat/auth-onboarding-ui`, `feat/supabase-data-layer`, `fix/mutation-error-handling-and-loading-states`, `fix/ui-date-picker-and-filter-height`, `ui-screens`) predate this convention — no need to rename them, just use `<role>/<description>` going forward.
+
 ## Known environment quirk
 
 Node.js v25 refuses to strip TypeScript types from files inside `node_modules`. This means any `expo-*` package that ships `.ts` source and is listed as a config plugin in `app.json` will crash Metro on startup. `expo-status-bar` was removed from `app.json`'s `plugins` array for this reason — do not add it back.

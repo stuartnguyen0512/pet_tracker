@@ -10,7 +10,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { pets, listRecordsForPet, unlocked } = usePets();
   const { showToast } = useToast();
-  const { isLoggedIn, logOut } = useUiSession();
+  const { isLoggedIn, isInitializing, logOut } = useUiSession();
 
   const onExportAll = async () => {
     showToast('Preparing…');
@@ -19,10 +19,15 @@ export default function SettingsScreen() {
     showToast(ok ? 'Export saved' : 'Sharing unavailable');
   };
 
-  const onAccountRowPress = () => {
+  const onAccountRowPress = async () => {
     if (isLoggedIn) {
-      logOut();
-      showToast('Logged out');
+      try {
+        await logOut();
+        showToast('Logged out');
+      } catch (e) {
+        console.error('[Settings] sign out failed:', e);
+        showToast('Could not log out — please try again');
+      }
     } else {
       router.push('/login');
     }
@@ -60,9 +65,15 @@ export default function SettingsScreen() {
         </View>
 
         <Text style={styles.sectionLabel}>Account</Text>
-        <Pressable style={styles.accountRow} onPress={onAccountRowPress}>
-          <Text style={styles.accountRowText}>{isLoggedIn ? 'Log Out' : 'Log In or Sign Up'}</Text>
-          {!isLoggedIn && <Text style={styles.chevron}>›</Text>}
+        <Pressable
+          style={[styles.accountRow, isInitializing && styles.accountRowDisabled]}
+          onPress={onAccountRowPress}
+          disabled={isInitializing}
+        >
+          <Text style={styles.accountRowText}>
+            {isInitializing ? 'Loading…' : isLoggedIn ? 'Log Out' : 'Log In or Sign Up'}
+          </Text>
+          {!isInitializing && !isLoggedIn && <Text style={styles.chevron}>›</Text>}
         </Pressable>
         <Text style={styles.exportHint}>Sync your pets and records across your own devices.</Text>
 
@@ -171,6 +182,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 14,
+  },
+  accountRowDisabled: {
+    opacity: 0.5,
   },
   accountRowText: {
     fontSize: 17,
