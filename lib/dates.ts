@@ -30,7 +30,7 @@ export function shortDate(iso: string): string {
 // Returns e.g. "3 yr" or "8 mo"; empty string if no birthdate given.
 export function ageStr(iso: string | null): string {
   if (!iso) return '';
-  const birth = new Date(iso);
+  const birth = fromIsoDate(iso);
   const now = new Date();
   let years = now.getFullYear() - birth.getFullYear();
   let months = now.getMonth() - birth.getMonth();

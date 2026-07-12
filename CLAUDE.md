@@ -26,9 +26,18 @@ There is no test suite yet. There is no lint script yet.
 
 Every agent (UI, Data Layer, Integration/Fix-errors, or any other) does its work on its own branch — never commit directly to `main`.
 
-- **Branch naming**: `<agent-role>/<short-description>` — e.g. `ui/paywall-copy`, `data/sync-migration`, `integration/wire-auth-session`.
+- **Branch naming**: `<agent-role>/<short-description>` — e.g. `ui/paywall-copy`, `data/sync-migration`, `integration/wire-auth-session`. Bug fixes use `fix/<short-description>` as their role slug — e.g. `fix/mutation-error-handling`.
 - **Flow**: branch from `main` → do the work → push → **delete the local branch immediately after the push succeeds**. The pushed remote branch is what preserves the work from here.
 - **Do not delete the remote branch.** Min reviews the PR and deletes the remote branch himself once it's merged into `main`. Agents only ever clean up their local copy.
+
+### Starting a new feature or bug fix
+
+1. Make sure `main` is current: `git checkout main && git pull`
+2. Create the branch: `git checkout -b <role>/<short-description>` — e.g. `git checkout -b fix/ageStr-timezone-bug` or `git checkout -b ui/paywall-copy`
+3. Do the work, committing normally on that branch (never on `main`).
+4. Push it: `git push -u origin <role>/<short-description>`
+5. Open a PR for Min to review: `gh pr create` (or the GitHub UI).
+6. Once the push has succeeded, delete the **local** branch: `git checkout main && git branch -d <role>/<short-description>`. Leave the remote branch alone — see above.
 
 Existing branches on `origin` (`feat/auth-integration`, `feat/auth-onboarding-ui`, `feat/supabase-data-layer`, `fix/mutation-error-handling-and-loading-states`, `fix/ui-date-picker-and-filter-height`, `ui-screens`) predate this convention — no need to rename them, just use `<role>/<description>` going forward.
 

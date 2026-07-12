@@ -139,6 +139,7 @@ Pet owners who currently track health info via memory, paper, or notes apps, and
 - **Row-level security:** every Supabase table scoped `owner_id = auth.uid()`. No sharing/collaboration policies, consistent with personal-only scope (§4).
 - **Apple platform requirement:** offering email/password login obligates also offering Sign in with Apple — already satisfied by this plan.
 - **No subscription/payment SDK** of any kind, per §4/§7.9.
+- **Git workflow:** every feature or bug fix starts on its own branch off `main` (never commit directly to `main`) — see `CLAUDE.md`'s "Git workflow" section for the exact branch-naming convention and commands.
 
 ## 9. Success Metrics (v2)
 
