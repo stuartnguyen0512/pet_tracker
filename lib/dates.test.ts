@@ -60,16 +60,20 @@ describe('ageStr', () => {
     jest.useRealTimers();
   });
 
-  // BUG: ageStr parses the ISO birthdate with `new Date(iso)`, which the file's
-  // own module comment says is unsafe ("going through toISOString()/`new
-  // Date(iso)` shifts the day near midnight in timezones behind UTC") — but
-  // ageStr does exactly that instead of using the sibling fromIsoDate() helper.
-  // In any timezone behind UTC this silently overcounts the age by up to a
-  // year near a birthday/year boundary. Pinned to Honolulu (UTC-10, no DST)
-  // so the assertion is deterministic regardless of the machine running it.
-  it('BUG: overcounts age by a year near a UTC day-boundary in timezones behind UTC', () => {
-    const originalTZ = process.env.TZ;
-    process.env.TZ = 'Pacific/Honolulu';
+  // Regression test for a fixed bug: ageStr used to parse the ISO birthdate
+  // with `new Date(iso)`, which the file's own module comment warns against
+  // ("going through toISOString()/`new Date(iso)` shifts the day near
+  // midnight in timezones behind UTC"). That shift silently overcounted age
+  // by up to a year near a birthday/year boundary in any timezone behind
+  // UTC.
+  //
+  // This needs the process itself to be running in a timezone behind UTC —
+  // reassigning process.env.TZ mid-test does NOT reliably work, because V8
+  // caches the resolved local timezone the first time any Date/Intl call
+  // happens in the process and ignores later reassignments. So the `test`
+  // npm script pins TZ=Pacific/Honolulu (UTC-10, no DST, so this is
+  // deterministic year-round) for the whole Jest run instead.
+  it('does not overcount age near a UTC day-boundary in timezones behind UTC', () => {
     // 2026-01-01T08:00:00Z == 2025-12-31 22:00 HST
     jest.useFakeTimers().setSystemTime(new Date('2026-01-01T08:00:00Z'));
 
@@ -77,11 +81,7 @@ describe('ageStr', () => {
     const result = ageStr('2020-01-01');
 
     jest.useRealTimers();
-    process.env.TZ = originalTZ;
 
-    // This is the CURRENT (buggy) behavior, asserted so the test fails the
-    // moment someone fixes ageStr to use fromIsoDate() instead of `new
-    // Date(iso)` — at which point this test should be updated to expect '5 yr'.
-    expect(result).toBe('6 yr');
+    expect(result).toBe('5 yr');
   });
 });

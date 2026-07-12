@@ -7,5 +7,8 @@ export function speciesTint(species: string): string {
 }
 
 export function initialOf(name: string): string {
-  return (name[0] || '?').toUpperCase();
+  // Iterate by code point (not name[0], which indexes by UTF-16 code unit and
+  // would split an astral character like an emoji into a broken surrogate half).
+  const first = [...name][0];
+  return (first || '?').toUpperCase();
 }
