@@ -16,7 +16,6 @@ export default function RootLayout() {
             <Stack.Screen name="pet/[id]/record/new" options={{ presentation: 'modal' }} />
             <Stack.Screen name="pet/[id]/record/[recordId]" options={{ presentation: 'modal' }} />
             <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
-            <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
             <Stack.Screen name="login" options={{ presentation: 'modal' }} />
             <Stack.Screen name="signup" options={{ presentation: 'modal' }} />
             <Stack.Screen name="onboarding" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />

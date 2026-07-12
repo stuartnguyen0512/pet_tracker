@@ -8,7 +8,7 @@ import { useUiSession } from '../store/uiSession';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { pets, listRecordsForPet, unlocked } = usePets();
+  const { pets, listRecordsForPet } = usePets();
   const { showToast } = useToast();
   const { isLoggedIn, isInitializing, logOut } = useUiSession();
 
@@ -90,12 +90,6 @@ export default function SettingsScreen() {
 
         <Text style={styles.sectionLabel}>About</Text>
         <View style={styles.aboutCard}>
-          {!unlocked && (
-            <Pressable style={styles.aboutRow} onPress={() => router.push('/paywall')}>
-              <Text style={styles.unlockRowText}>Unlock more pets</Text>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
-          )}
           <View style={styles.aboutRow}>
             <Text style={styles.aboutRowLabel}>Version</Text>
             <Text style={styles.aboutRowValue}>1.0 (MVP)</Text>
@@ -239,11 +233,6 @@ const styles = StyleSheet.create({
   },
   aboutRowLast: {
     borderBottomWidth: 0,
-  },
-  unlockRowText: {
-    fontSize: 17,
-    fontWeight: '500',
-    color: colors.accent,
   },
   aboutRowLabel: {
     fontSize: 17,

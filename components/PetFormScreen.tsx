@@ -39,7 +39,7 @@ async function pickImage(source: 'camera' | 'library'): Promise<string | null> {
 
 export function PetFormScreen({ pet }: { pet?: Pet }) {
   const router = useRouter();
-  const { createPet, updatePet, deletePet, listRecordsForPet, pets, unlocked } = usePets();
+  const { createPet, updatePet, deletePet, listRecordsForPet } = usePets();
   const { showToast } = useToast();
 
   const [name, setName] = useState(pet?.name ?? '');
@@ -72,13 +72,6 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
 
   const onSave = async () => {
     if (!canSave) return;
-    // Re-check the paywall gate here too, not just at the "+ Add Pet" button —
-    // a double-tap can push this screen twice before the first save commits,
-    // and app/index.tsx's check alone can't catch that.
-    if (!pet && pets.length >= 1 && !unlocked) {
-      router.replace('/paywall');
-      return;
-    }
     // Photo is only moved into permanent storage (and the old one cleaned up)
     // once the user actually commits — picking a new photo and then hitting
     // Cancel must leave the original file and DB row untouched.
