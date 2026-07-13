@@ -26,14 +26,14 @@ There is no test suite yet. There is no lint script yet.
 
 Every agent (UI, Data Layer, Integration/Fix-errors, or any other) does its work on its own branch — never commit directly to `main`.
 
-- **Branch naming**: `<agent-role>/<short-description>` — e.g. `ui/paywall-copy`, `data/sync-migration`, `integration/wire-auth-session`. Bug fixes use `fix/<short-description>` as their role slug — e.g. `fix/mutation-error-handling`.
+- **Branch naming**: `<agent-role>/<short-description>` — e.g. `ui/onboarding-copy`, `data/sync-migration`, `integration/wire-auth-session`. Bug fixes use `fix/<short-description>` as their role slug — e.g. `fix/mutation-error-handling`.
 - **Flow**: branch from `main` → do the work → push → **delete the local branch immediately after the push succeeds**. The pushed remote branch is what preserves the work from here.
 - **Do not delete the remote branch.** Min reviews the PR and deletes the remote branch himself once it's merged into `main`. Agents only ever clean up their local copy.
 
 ### Starting a new feature or bug fix
 
 1. Make sure `main` is current: `git checkout main && git pull`
-2. Create the branch: `git checkout -b <role>/<short-description>` — e.g. `git checkout -b fix/ageStr-timezone-bug` or `git checkout -b ui/paywall-copy`
+2. Create the branch: `git checkout -b <role>/<short-description>` — e.g. `git checkout -b fix/ageStr-timezone-bug` or `git checkout -b ui/onboarding-copy`
 3. Do the work, committing normally on that branch (never on `main`).
 4. Push it: `git push -u origin <role>/<short-description>`
 5. Open a PR for Min to review: `gh pr create` (or the GitHub UI).
@@ -82,7 +82,7 @@ app/index.tsx            Pet list (home) screen — implemented, not a stub
 
 ## Monetization constraint
 
-**No subscription model — not now, not planned. No payment/receipt verification of any kind.** The only monetization is a one-time, non-consumable unlock (~$7.99) that removes the 1-pet cap (PRD §4, §7.5, §7.9, §10). `store/pets.tsx`'s `unlocked` flag and `unlockPets()` already implement this correctly as a simple trusted boolean — not a subscription entitlement check, and not a verified purchase. Do not introduce StoreKit auto-renewable subscriptions, subscription tiers, recurring billing, or any receipt/purchase verification of any kind without this constraint being explicitly revisited first. This holds even once the cloud entitlements table (below) exists — that table syncs the same trusted flag, it does not add verification.
+**The app is fully free — no payment, no purchases, no subscriptions, no feature gating of any kind.** There used to be a one-time-unlock pet cap (PRD §4, §7.5); it has been removed, along with the paywall screen and `store/pets.tsx`'s `unlocked` flag / `unlockPets()`. Do not reintroduce a pet-count limit, paywall UI, or any purchase/entitlement flow — including StoreKit subscriptions, IAP, or receipt verification — without this being explicitly revisited first.
 
 ## Planned: cloud sync (v2) — NOT YET IMPLEMENTED
 
@@ -93,7 +93,6 @@ The project is migrating to per-user accounts and cross-device sync via Supabase
 - **SQLite stays the source of truth on-device.** Supabase is a synced copy, not a replacement — the app must keep working fully offline between syncs.
 - **Sync is manual** — a "Sync Now" action the user triggers, not automatic/background sync.
 - **Personal-only accounts** — no sharing/collaboration between different users. This is why the sync design below can get away with silent last-write-wins instead of real conflict resolution or a dedicated sync engine.
-- **No payment verification** — the pet-unlock flag syncs to Supabase but remains a trusted client flag (see Monetization constraint above).
 - **v1 local dogfooding data is not migrated** — v2 starts fresh, no migration script needed.
 - Deliberately **not** using a third-party offline-sync engine (e.g. PowerSync) — evaluated and skipped since personal-only accounts don't need real conflict resolution; a hand-rolled dirty-flag outbox is enough. Reconsider only if sync bugs prove hard to get right by hand.
 
@@ -103,7 +102,6 @@ The project is migrating to per-user accounts and cross-device sync via Supabase
 |---|---|---|
 | `pets` | `id uuid pk`, `owner_id uuid → auth.users`, `name`, `species`, `photo_url`, `birthdate`, `updated_at`, `deleted_at` | `deleted_at` is a tombstone, not an immediate delete — needed so sync can propagate deletes both directions |
 | `health_records` | `id uuid pk`, `pet_id → pets`, `owner_id uuid` (denormalized to keep RLS simple), `type`, `date`, `details`, `photo_url`, `updated_at`, `deleted_at` | same tombstone pattern as `pets` |
-| `entitlements` | `owner_id uuid pk → auth.users`, `unlocked bool`, `unlocked_at` | mirrors the local `unlocked` flag — no purchase/transaction columns, since there's no verification (see Monetization constraint) |
 
 Row-level security: every table gets one policy, `owner_id = auth.uid()`. No sharing policies — personal-only scope.
 

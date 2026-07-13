@@ -135,17 +135,17 @@ describe('records', () => {
 
 describe('settings', () => {
   it('returns null for a setting that has never been set', async () => {
-    expect(await Q.getSetting(db, 'unlocked')).toBeNull();
+    expect(await Q.getSetting(db, 'exampleKey')).toBeNull();
   });
 
   it('round-trips a value through setSetting/getSetting', async () => {
-    await Q.setSetting(db, 'unlocked', '1');
-    expect(await Q.getSetting(db, 'unlocked')).toBe('1');
+    await Q.setSetting(db, 'exampleKey', '1');
+    expect(await Q.getSetting(db, 'exampleKey')).toBe('1');
   });
 
   it('overwrites rather than duplicating on a repeated key (upsert)', async () => {
-    await Q.setSetting(db, 'unlocked', '1');
-    await Q.setSetting(db, 'unlocked', '0');
-    expect(await Q.getSetting(db, 'unlocked')).toBe('0');
+    await Q.setSetting(db, 'exampleKey', '1');
+    await Q.setSetting(db, 'exampleKey', '0');
+    expect(await Q.getSetting(db, 'exampleKey')).toBe('0');
   });
 });

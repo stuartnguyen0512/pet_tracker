@@ -11,7 +11,7 @@ import { Pet } from '../types';
 
 export default function PetListScreen() {
   const router = useRouter();
-  const { pets, unlocked } = usePets();
+  const { pets } = usePets();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
 
   // Runs once per app launch — on a brand new install this redirects to the
@@ -32,11 +32,7 @@ export default function PetListScreen() {
   }, []);
 
   const onAddPet = () => {
-    if (pets.length >= 1 && !unlocked) {
-      router.push('/paywall');
-    } else {
-      router.push('/pet/new');
-    }
+    router.push('/pet/new');
   };
 
   const renderPet = ({ item }: { item: Pet }) => (
