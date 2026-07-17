@@ -173,6 +173,7 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
               value={date}
               mode="date"
               display="compact"
+              maximumDate={new Date()}
               onChange={(_, selected) => selected && setDate(selected)}
               style={styles.datePicker}
             />

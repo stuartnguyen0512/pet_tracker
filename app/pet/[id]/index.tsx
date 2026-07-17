@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActionSheetIOS, ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,11 +39,9 @@ export default function PetProfileScreen() {
 
   useFocusEffect(refetch);
 
-  useEffect(() => {
-    // Pet was deleted (e.g. from the edit screen) — nothing to show, go back.
-    if (!pet) router.replace('/');
-  }, [pet, router]);
-
+  // Pet was deleted (e.g. from the edit screen) — nothing to show. The edit
+  // screen's delete flow already handles navigation via dismissTo('/'), so
+  // this just needs to avoid rendering the (now missing) pet.
   if (!pet) return null;
 
   const filtered = filter === 'All' ? records : records.filter(r => r.type === filter);

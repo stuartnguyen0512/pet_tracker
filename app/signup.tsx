@@ -37,7 +37,7 @@ export default function SignupScreen() {
       }
       if (data.session) {
         // Confirmations off on this project — account is usable immediately.
-        router.replace('/');
+        router.dismissTo('/');
       } else {
         // Confirmations required — don't pretend the user is signed in yet.
         showToast('Check your email to confirm your account');
