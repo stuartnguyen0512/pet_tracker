@@ -32,7 +32,7 @@ export default function LoginScreen() {
         showToast('Invalid email or password');
         return;
       }
-      router.replace('/');
+      router.dismissTo('/');
     } catch (e) {
       console.error('[Login] sign in failed:', e);
       showToast('Could not log in — please try again');

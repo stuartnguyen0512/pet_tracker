@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/theme';
 import { exportJson } from '../lib/export';
+import { initialOf } from '../lib/petDisplay';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
@@ -10,7 +11,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { pets, listRecordsForPet } = usePets();
   const { showToast } = useToast();
-  const { isLoggedIn, isInitializing, logOut } = useUiSession();
+  const { isLoggedIn, isInitializing, logOut, user } = useUiSession();
 
   const onExportAll = async () => {
     showToast('Preparing…');
@@ -70,9 +71,20 @@ export default function SettingsScreen() {
           onPress={onAccountRowPress}
           disabled={isInitializing}
         >
-          <Text style={styles.accountRowText}>
-            {isInitializing ? 'Loading…' : isLoggedIn ? 'Log Out' : 'Log In or Sign Up'}
-          </Text>
+          {isLoggedIn && (
+            <View style={styles.accountAvatar}>
+              <Text style={styles.accountAvatarText}>{initialOf(user?.email ?? '?')}</Text>
+            </View>
+          )}
+          <View style={styles.accountRowBody}>
+            <Text
+              style={[styles.accountRowText, isLoggedIn && styles.accountRowTextLoggedIn]}
+              numberOfLines={1}
+            >
+              {isInitializing ? 'Loading…' : isLoggedIn ? (user?.email ?? 'Signed in') : 'Log In or Sign Up'}
+            </Text>
+            {isLoggedIn && !isInitializing && <Text style={styles.accountRowSubtext}>Log Out</Text>}
+          </View>
           {!isInitializing && !isLoggedIn && <Text style={styles.chevron}>›</Text>}
         </Pressable>
         <Text style={styles.exportHint}>Sync your pets and records across your own devices.</Text>
@@ -172,7 +184,7 @@ const styles = StyleSheet.create({
   accountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 12,
     backgroundColor: colors.card,
     borderRadius: 12,
     padding: 14,
@@ -180,10 +192,35 @@ const styles = StyleSheet.create({
   accountRowDisabled: {
     opacity: 0.5,
   },
+  accountAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.accentWeak,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accountAvatarText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.accent,
+  },
+  accountRowBody: {
+    flex: 1,
+    minWidth: 0,
+  },
   accountRowText: {
     fontSize: 17,
     fontWeight: '500',
     color: colors.accent,
+  },
+  accountRowTextLoggedIn: {
+    color: colors.text,
+  },
+  accountRowSubtext: {
+    fontSize: 13,
+    color: colors.danger,
+    marginTop: 2,
   },
   exportButton: {
     height: 50,
