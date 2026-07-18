@@ -8,17 +8,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 https://docs.expo.dev/versions/v54.0.0/
 
-> Note: `AGENTS.md` references v57.0.0 — that is outdated. Use the v54 link above.
+> `AGENTS.md` previously referenced v57.0.0 (outdated) — fixed 2026-07-17 to point at v54 above, matching `package.json`'s `"expo": "~54.0.0"`.
 
 ## Commands
 
 ```bash
 npx expo start          # start Metro dev server (scan QR in Expo Go)
 npx expo start --ios    # open iOS simulator directly
+npx expo start --web    # web preview — dev/demo convenience only, not a shipped platform (see "Platform targets" below)
 npx tsc --noEmit        # type-check without building
+npm test                # Jest suite — db/*.test.ts, lib/*.test.ts, userJourney.test.ts
+npm run test:live       # lib/supabaseAuth.live.test.ts against a real Supabase project (needs RUN_LIVE_SUPABASE_TESTS=1)
 ```
 
-There is no test suite yet. There is no lint script yet.
+There is no lint script yet.
 
 **Do not run `npx expo start` automatically after making changes** — give the user the command to run instead.
 
@@ -39,29 +42,38 @@ Every agent (UI, Data Layer, Integration/Fix-errors, or any other) does its work
 5. Open a PR for Min to review: `gh pr create` (or the GitHub UI).
 6. Once the push has succeeded, delete the **local** branch: `git checkout main && git branch -d <role>/<short-description>`. Leave the remote branch alone — see above.
 
-Existing branches on `origin` (`feat/auth-integration`, `feat/auth-onboarding-ui`, `feat/supabase-data-layer`, `fix/mutation-error-handling-and-loading-states`, `fix/ui-date-picker-and-filter-height`, `ui-screens`) predate this convention — no need to rename them, just use `<role>/<description>` going forward.
+Branches that predated this convention (`feat/auth-integration`, `feat/auth-onboarding-ui`, `feat/supabase-data-layer`, `fix/mutation-error-handling-and-loading-states`, `fix/ui-date-picker-and-filter-height`, `ui-screens`) have **all already been merged into `main`** — see "Architecture — current state" below, which this file's previous version had not caught up to. No need to rename them; just use `<role>/<description>` going forward.
 
 ## Known environment quirk
 
 Node.js v25 refuses to strip TypeScript types from files inside `node_modules`. This means any `expo-*` package that ships `.ts` source and is listed as a config plugin in `app.json` will crash Metro on startup. `expo-status-bar` was removed from `app.json`'s `plugins` array for this reason — do not add it back.
 
-## Architecture — current state (v1, implemented)
+## Architecture — current state (verified 2026-07-17)
 
-This is currently a **local-only iOS pet health tracker** (PRD is in `PRD.md`, now at v2.0). Everything below this heading describes what is **actually built and running today**. No Supabase client, auth screens, or sync code exist in the repo yet — see "Planned: cloud sync (v2)" further down for what's designed but not yet implemented. Do not assume anything in that section exists in code until it has actually been added here.
+Verified by walking the actual repo (file tree, `git log --all --oneline`, and reading the code directly) — this replaces the earlier "needs a verification pass" placeholder. Treat this as ground truth until the code changes again.
 
 ### Data flow
 
 ```
-SQLite (pettracker.db)
+SQLite (pettracker.db) — unchanged, still the on-device source of truth
   └── db/database.ts     initDatabase() — opens connection, enables WAL + FK enforcement, runs migrations
   └── db/queries.ts      pure async functions (createPet, listPets, createRecord, …) — all take db as first arg
 
 store/pets.tsx           PetsProvider — owns the SQLiteDatabase connection and pets[] React state
   └── wraps the whole app via app/_layout.tsx
   └── exposes usePets() hook to screens
+  └── still has the original "block render until db is set" gate (`if (!db) return null`) — UNCHANGED,
+      and this is intentionally still the only blocking gate in the app (see "Auth" below)
 
-app/_layout.tsx          Root Stack navigator wrapped in PetsProvider
-app/index.tsx            Pet list (home) screen — implemented, not a stub
+store/uiSession.tsx       UiSessionProvider — wraps real supabase.auth session tracking
+  └── exposes isLoggedIn / user / logOut via useUiSession()
+  └── does NOT gate anything — nothing in app/_layout.tsx reads isLoggedIn to redirect
+
+app/_layout.tsx           Root Stack navigator: PetsProvider > ToastProvider > UiSessionProvider > Stack
+                           All screens (index, pet/*, settings, login, signup, onboarding) are registered
+                           as peers — there is no auth-conditional routing here.
+app/index.tsx              Pet list (home) — implemented; redirects to /onboarding on first launch only
+                           (via lib/onboarding.ts + AsyncStorage), unrelated to auth.
 ```
 
 ### State split
@@ -70,29 +82,64 @@ app/index.tsx            Pet list (home) screen — implemented, not a stub
 
 ### Schema migrations
 
-`db/database.ts` uses `PRAGMA user_version` as the migration counter. To add a schema change: append a new integer key to the `MIGRATIONS` object — never edit an existing entry. Each migration runs inside `withTransactionAsync` so partial migrations can't persist. When cloud sync (below) is implemented, the sync-related columns (`updated_at`, `dirty`, `deleted_at`) should be added this same way, as new migration entries — not by editing the existing `pets`/`records` table definitions.
+`db/database.ts` uses `PRAGMA user_version` as the migration counter. To add a schema change: append a new integer key to the `MIGRATIONS` object — never edit an existing entry. Each migration runs inside `withTransactionAsync` so partial migrations can't persist.
+
+**Local schema is still v1-only** — only migration `1` (`pets`/`records`) and `2` (`settings`) exist. None of `updated_at` / `dirty` / `deleted_at` have been added yet. Milestone 3 (local sync scaffolding) has **not started**.
+
+**Cloud schema exists and is further along** — `supabase/migrations/20260711202355_schema_v2_cloud_sync.sql` creates `pets` and `health_records` with `owner_id`, `updated_at`, `deleted_at`, RLS enabled, one policy per table (`owner_id = auth.uid()`). This part of milestone 1 is done. That same migration also created an `entitlements` table for the **old** one-time-unlock model (`unlocked boolean`) — this is now stale, see "Monetization constraint" below for what replaces it.
 
 ### Types
 
-`types.ts` at the project root defines `Pet`, `HealthRecord`, and `RecordType`. The TypeScript type is named `HealthRecord` (not `Record`) to avoid shadowing the built-in `Record<K,V>` utility. SQLite columns use `snake_case` (`pet_id`); the row mappers in `db/queries.ts` translate to camelCase at the boundary.
+`types.ts` at the project root defines `Pet`, `HealthRecord`, and `RecordType`. The TypeScript type is named `HealthRecord` (not `Record`) to avoid shadowing the built-in `Record<K,V>` utility. SQLite columns use `snake_case` (`pet_id`); the row mappers in `db/queries.ts` translate to camelCase at the boundary. Local types have no sync columns yet (see Schema migrations above).
 
 ### Photos
 
-`expo-image-picker` selects/captures photos; `expo-file-system` persists them to the app sandbox. Photo fields on both `Pet` and `HealthRecord` are nullable strings (local file URIs). `expo-sharing` is used for the JSON data export (PRD §7.6). Cloud photo sync (Supabase Storage) is planned but not yet implemented — see below.
+`expo-image-picker` selects/captures photos; `expo-file-system` (via `lib/photos.ts`) persists them to the app sandbox. Photo fields on both `Pet` and `HealthRecord` are nullable strings (local file URIs). `expo-sharing` is used for the JSON data export (PRD §7.6). **Cloud photo sync (Supabase Storage) does not exist anywhere in the codebase** — `lib/photos.ts` is purely local. Milestone 5 has not started.
 
-## Monetization constraint
+### Auth
 
-**The app is fully free — no payment, no purchases, no subscriptions, no feature gating of any kind.** There used to be a one-time-unlock pet cap (PRD §4, §7.5); it has been removed, along with the paywall screen and `store/pets.tsx`'s `unlocked` flag / `unlockPets()`. Do not reintroduce a pet-count limit, paywall UI, or any purchase/entitlement flow — including StoreKit subscriptions, IAP, or receipt verification — without this being explicitly revisited first.
+`app/login.tsx` / `app/signup.tsx` call real `supabase.auth.signInWithPassword` / `signUp` — not mocked, fully wired for email/password. Sign in with Apple is a **stub only**: the UI button exists but is disabled and just shows a toast ("Apple Sign In coming soon"); `supabase/config.toml` has `[auth.external.apple] enabled = false`. Not built yet — see "Planned / in-progress: cloud sync" → Auth below for the plan and the Apple Developer Program prerequisite.
 
-## Planned: cloud sync (v2) — NOT YET IMPLEMENTED
+**Accounts are optional by design, not by omission.** `app/_layout.tsx` has no session-based redirect at all. A user can use the entire app — add pets, log records, everything — forever, without ever logging in. This was confirmed intentional and is now a locked decision (2026-07-17, do not re-litigate without asking Min): **hybrid gating**. Anonymous use is allowed; login is only required when the user taps "Sync Now," or later, when the RevenueCat client-side entitlement check says the trial/subscription has lapsed. This supersedes PRD §12 milestone 2's literal wording ("session-gated app entry... replacing today's block-render gate") — the PRD text is stale relative to this decision, not the code. Don't "fix" `_layout.tsx` to add a blanket login gate without checking with Min first.
 
-The project is migrating to per-user accounts and cross-device sync via Supabase. This section documents the **target** design from `PRD.md` v2.0 so future work stays consistent — as of the last update to this file, **none of it exists in code yet**. Treat every item below as a plan to build, not a description of the current app. Check `PRD.md` §12 for phase order before starting any of this work.
+### Sync Now UI
+
+`app/settings.tsx` has a real "Sync Now" button, correctly placed next to "Export All Data" per PRD §7.8, and correctly gated behind `isLoggedIn` (routes to `/login` if signed out). But `onSyncNow` is a stub — `showToast('Nothing to sync yet')`, no push/pull logic wired up (there's a code comment saying exactly this). Milestone 3 (dirty-flag columns + push/pull function) and the real half of milestone 4 (wiring this button to that function) are both still to build.
+
+### Monetization / subscription state
+
+The old one-time-unlock paywall was **fully removed** (`fix/remove-paywall`, PR #8, commit `96e412d` — "Remove monetization: the app is now fully free with unlimited pets"). This happened *after* auth/data-layer merged but *before* ADR 0001 (the trial/subscription model) was finalized. There is no `react-native-purchases` dependency and no paywall screen in the codebase today. **Milestone 8 is greenfield** — nothing to resume, and the existing `entitlements` migration is the wrong shape for it (see below).
+
+### Platform targets
+
+iOS is the only real build target per the PRD title. `integration/web-platform-support` (adds `react-native-web` + `expo start --web`) was merged and is **kept intentionally as a dev/preview convenience only — not a shipped platform.** Don't spend milestone time on web-specific bugs beyond "doesn't crash the dev preview."
+
+## Monetization constraint (finalized 2026-07-16 — see `docs/adr/0001-subscription-trial-monetization.md`)
+
+**No longer fully free.** The app has moved to a free-trial-then-auto-renewing-subscription model. This supersedes both the old one-time $7.99 unlock (removed via `fix/remove-paywall`, see "Architecture — current state" above) and the "fully free" model that replaced it.
+
+- **14-day free trial, then $4.99/month.** No permanent free tier — after the trial the entire app is gated, not partially. Do not build a limited-free-forever fallback.
+- **StoreKit + RevenueCat.** Apple requires all in-app digital subscriptions to use IAP, so this cannot be a client-only trusted flag the way the old unlock was. RevenueCat handles purchase flow, receipt validation, trial tracking, and cross-device entitlement sync — do not hand-roll StoreKit 2 + App Store Server API receipt verification instead.
+- **Affiliate revenue (e.g. pet-insurance referral links) is explicitly out of scope** for this monetization work — a separate future decision, not bundled in here.
+- Do not build AI features or GPS/geofencing as part of this monetization work — both were evaluated (as part of a separate "PetCare AI Assistant" concept) and explicitly deferred, not adopted. See PRD §4.
+
+### Entitlement design (decided 2026-07-17, consistent with the hybrid auth decision above)
+
+- **RevenueCat SDK (client-side `Purchases.getCustomerInfo()`) is the source of truth** for "is this device currently entitled." This is the actual app-access gate — it works for anonymous users too, consistent with hybrid gating (no Supabase account needed for the SDK to answer correctly).
+- **Supabase `entitlements` is a secondary mirror**, used only to recognize entitlement cross-device once a user has created an account. It must never become the primary gate — that would require login before every access check, which breaks the hybrid decision.
+- Sync mechanism: **RevenueCat webhook → a new Supabase Edge Function** writes entitlement state into Supabase. This is a new infra component, not yet built. Do not implement "app self-reports entitlement on every launch" as the primary sync path — it's not reliable if the user doesn't open the app.
+- The existing `entitlements` migration (`unlocked boolean`, `unlocked_at`) is the pre-ADR-0001 one-time-unlock shape and cannot be reused as-is. Per the "never edit an existing migration" rule above, this must be handled with a **new migration** that alters the table: drop `unlocked` / `unlocked_at`, add `revenuecat_customer_id`, `trial_ends_at`, `current_period_ends_at`, `is_active`. Do not edit `20260711202355_schema_v2_cloud_sync.sql` directly.
+
+## Planned / in-progress: cloud sync
+
+The project is migrating to per-user accounts and cross-device sync via Supabase, per `PRD.md` (v2.1). Auth (email/password only), the Supabase data layer, and onboarding UI have merged into `main` — see "Architecture — current state" above for exactly what that means in practice. Confirmed still outstanding: local sync scaffolding + push/pull engine (milestone 3), wiring "Sync Now" to real logic (milestone 4), photo sync (milestone 5), Sign in with Apple, and the RevenueCat/subscription work (milestone 8).
 
 ### Key decisions (already made, do not re-litigate without asking Min)
 
 - **SQLite stays the source of truth on-device.** Supabase is a synced copy, not a replacement — the app must keep working fully offline between syncs.
 - **Sync is manual** — a "Sync Now" action the user triggers, not automatic/background sync.
 - **Personal-only accounts** — no sharing/collaboration between different users. This is why the sync design below can get away with silent last-write-wins instead of real conflict resolution or a dedicated sync engine.
+- **Accounts are optional (hybrid gating)** — see "Architecture — current state" → Auth above. Login is required only for Sync Now and once trial/subscription lapses, not for core app use.
 - **v1 local dogfooding data is not migrated** — v2 starts fresh, no migration script needed.
 - Deliberately **not** using a third-party offline-sync engine (e.g. PowerSync) — evaluated and skipped since personal-only accounts don't need real conflict resolution; a hand-rolled dirty-flag outbox is enough. Reconsider only if sync bugs prove hard to get right by hand.
 
@@ -100,25 +147,38 @@ The project is migrating to per-user accounts and cross-device sync via Supabase
 
 | Table | Key columns | Notes |
 |---|---|---|
-| `pets` | `id uuid pk`, `owner_id uuid → auth.users`, `name`, `species`, `photo_url`, `birthdate`, `updated_at`, `deleted_at` | `deleted_at` is a tombstone, not an immediate delete — needed so sync can propagate deletes both directions |
-| `health_records` | `id uuid pk`, `pet_id → pets`, `owner_id uuid` (denormalized to keep RLS simple), `type`, `date`, `details`, `photo_url`, `updated_at`, `deleted_at` | same tombstone pattern as `pets` |
+| `pets` | `id uuid pk`, `owner_id uuid → auth.users`, `name`, `species`, `photo_url`, `birthdate`, `updated_at`, `deleted_at` | `deleted_at` is a tombstone, not an immediate delete — needed so sync can propagate deletes both directions. **Exists, done.** |
+| `health_records` | `id uuid pk`, `pet_id → pets`, `owner_id uuid` (denormalized to keep RLS simple), `type`, `date`, `details`, `photo_url`, `updated_at`, `deleted_at` | same tombstone pattern as `pets`. **Exists, done.** |
 
-Row-level security: every table gets one policy, `owner_id = auth.uid()`. No sharing policies — personal-only scope.
+Row-level security: every table gets one policy, `owner_id = auth.uid()`. No sharing policies — personal-only scope. **Confirmed in place** (`supabase/migrations/20260711202355_schema_v2_cloud_sync.sql`).
 
 ### Target sync design
 
-Local schema gains `updated_at` / `dirty` / `deleted` columns (added via new migration entries, per Schema migrations above) mirroring the cloud shape. Every local write sets `dirty = 1` and bumps `updated_at`. "Sync Now" does, in order: push all dirty local rows to Supabase (upsert, last-write-wins by comparing `updated_at`), pull remote rows changed since the last sync cursor, merge into local SQLite (again last-write-wins), clear dirty flags. Deletes are tombstoned locally too, so they propagate the same way as edits rather than needing special-case handling.
+Local schema needs `updated_at` / `dirty` / `deleted` columns (added via new migration entries, per Schema migrations above) mirroring the cloud shape — **not yet added.** Every local write should set `dirty = 1` and bump `updated_at`. "Sync Now" should, in order: push all dirty local rows to Supabase (upsert, last-write-wins by comparing `updated_at`), pull remote rows changed since the last sync cursor, merge into local SQLite (again last-write-wins), clear dirty flags. Deletes are tombstoned locally too, so they propagate the same way as edits rather than needing special-case handling. None of this exists yet — the "Sync Now" button in `app/settings.tsx` is UI-only (see Architecture above).
 
 ### Target auth
 
-Supabase Auth, two providers: email/password and Sign in with Apple. Apple requires offering Sign in with Apple if any other third-party login is offered, which is why both are in scope together — do not add email/password without also keeping Sign in with Apple. Session-gates app entry (this will replace/extend the current "block render until `db` is set" gate in `PetsProvider`).
+Supabase Auth, two providers: email/password (**done**) and Sign in with Apple (**stub UI only, not built**). Apple requires offering Sign in with Apple if any other third-party login is offered, which is why both are in scope together — do not ship email/password without also shipping Sign in with Apple; this blocks App Store submission (Guideline 4.8) if skipped. **Building Sign in with Apple requires a paid Apple Developer Program enrollment** (native entitlement, needs EAS Build / custom dev client — will not work in Expo Go) — confirm Min has completed enrollment before starting this ticket. Per the hybrid gating decision above, session does **not** gate app entry — do not add a blanket redirect-to-login in `app/_layout.tsx`. **Logout clears local data immediately** — show a confirmation warning first (this is a destructive, irreversible local action), not a silent wipe. See PRD §7.7.
 
 ### Target photo sync
 
-Supabase Storage bucket, scoped per account. On sync, dirty local photos upload; pulled remote photos download and cache locally so they're viewable offline afterward. Local `expo-file-system` storage remains the working copy either way — this is additive, not a replacement for local photo storage.
+Supabase Storage bucket, scoped per account. On sync, dirty local photos upload; pulled remote photos download and cache locally so they're viewable offline afterward. Local `expo-file-system` storage remains the working copy either way — this is additive, not a replacement for local photo storage. Not started.
 
-### Open questions (see PRD.md §13 for full context — do not resolve unilaterally in code)
+### Target "Sync Now" UI and conflict handling
 
-- Whether local data is cleared or retained on logout.
-- Where the "Sync Now" control lives in the UI.
-- Whether silent last-write-wins is acceptable long-term or needs a conflict UI later.
+"Sync Now" lives on the Settings screen, next to "Export All Data" — **already correctly placed.** Conflicts (same record edited on two devices before either syncs) resolve silently via last-write-wins, no conflict UI in v2 — revisit only if this causes real, noticed data loss during dogfooding. See PRD §7.8.
+
+All PRD §13 open questions were resolved 2026-07-16 — see PRD.md §13 for the full record.
+
+## Sub-agent / Linear label mapping
+
+`ui` / `data` / `integration` / `fix` (the branch role slugs already established above) are a **starting point Min came up with, not a hard constraint.** Use them as the default when they fit — they roughly map like this:
+
+| Linear label | Branch role slug | Owns |
+|---|---|---|
+| `ui` | `ui/` | Screens, navigation, onboarding, paywall UI |
+| `data` | `data/` | SQLite + Supabase schema, migrations, sync engine (push/pull/merge) |
+| `integration` | `integration/` | Wiring cross-cutting concerns together — auth session plumbing, RevenueCat/subscription SDK integration, etc. |
+| `fix` | `fix/` | Bug fixes, regardless of area |
+
+Feel free to keep this as-is, or split/add roles when a piece of work genuinely doesn't fit cleanly (e.g. a dedicated `subscription` role for milestone 8, if that turns out to be substantial enough to warrant its own lane) — just keep whatever labels get used consistent between Linear and branch prefixes so the two stay traceable to each other.

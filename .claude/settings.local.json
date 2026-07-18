@@ -32,7 +32,21 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(supabase --help)",
       "Bash(supabase config *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(node -e \"try { const {DatabaseSync} = require\\('node:sqlite'\\); console.log\\('node:sqlite available'\\); } catch\\(e\\) { console.log\\('not available:', e.message\\); }\")",
+      "Bash(npm ping *)",
+      "Bash(TZ=Pacific/Honolulu node *)",
+      "Bash(node *)",
+      "Bash(npx jest *)",
+      "Bash(npm test *)",
+      "Bash(grep -E \"^\\(react-dom|react-native-web|@expo\\)$\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(gh pr create --title 'Add Expo web platform support' --body ' *)",
+      "Bash(git branch *)",
+      "mcp__claude_ai_Linear__list_issues",
+      "mcp__claude_ai_Linear__get_issue",
+      "Bash(git pull *)",
+      "Bash(gh pr create --title 'Add local sync scaffolding columns + runSync push/pull/merge \\(MIN-39\\)' --body ' *)"
     ]
   }
 }
