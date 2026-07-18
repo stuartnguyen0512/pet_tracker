@@ -31,6 +31,19 @@ const MIGRATIONS: Record<number, string> = {
       value TEXT NOT NULL
     );
   `,
+  // Sync scaffolding (milestone 3): mirrors the cloud schema's updated_at/deleted_at
+  // columns and adds a local-only dirty flag to drive the future push/pull sync.
+  3: `
+    ALTER TABLE pets ADD COLUMN updated_at TEXT;
+    ALTER TABLE pets ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE pets ADD COLUMN deleted_at TEXT;
+    UPDATE pets SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
+
+    ALTER TABLE records ADD COLUMN updated_at TEXT;
+    ALTER TABLE records ADD COLUMN dirty INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE records ADD COLUMN deleted_at TEXT;
+    UPDATE records SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
+  `,
 };
 
 const LATEST_VERSION = Math.max(...Object.keys(MIGRATIONS).map(Number));

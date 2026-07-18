@@ -54,25 +54,42 @@ describe('pets', () => {
     expect(updated).toEqual({ id: pet.id, name: 'Milo Jr.', species: 'Cat', photo: null, birthdate: null });
   });
 
-  it('deletes a pet', async () => {
+  it('tombstones a pet instead of physically deleting it, and drops it from listPets', async () => {
     const pet = await Q.createPet(db, newPet());
     await Q.deletePet(db, pet.id);
-    expect(await Q.getPet(db, pet.id)).toBeNull();
+
+    expect((await Q.listPets(db)).map(p => p.id)).not.toContain(pet.id);
+
+    const row = await db.getFirstAsync<{ deleted_at: string | null; dirty: number }>(
+      'SELECT deleted_at, dirty FROM pets WHERE id = ?',
+      [pet.id],
+    );
+    expect(row?.deleted_at).not.toBeNull();
+    expect(row?.dirty).toBe(1);
   });
 
-  it('cascades pet deletion to that pet’s records', async () => {
+  it('cascades pet deletion to that pet’s records as tombstones, dropping them from listRecordsForPet', async () => {
     const pet = await Q.createPet(db, newPet());
     const record = await Q.createRecord(db, newRecord(pet.id));
     await Q.deletePet(db, pet.id);
-    expect(await Q.getRecord(db, record.id)).toBeNull();
+
+    expect(await Q.listRecordsForPet(db, pet.id)).toEqual([]);
+
+    const row = await db.getFirstAsync<{ deleted_at: string | null; dirty: number }>(
+      'SELECT deleted_at, dirty FROM records WHERE id = ?',
+      [record.id],
+    );
+    expect(row?.deleted_at).not.toBeNull();
+    expect(row?.dirty).toBe(1);
   });
 
-  it('does not delete other pets’ records when one pet is deleted', async () => {
+  it('does not tombstone other pets’ records when one pet is deleted', async () => {
     const petA = await Q.createPet(db, newPet({ name: 'A' }));
     const petB = await Q.createPet(db, newPet({ name: 'B' }));
     const recordB = await Q.createRecord(db, newRecord(petB.id));
     await Q.deletePet(db, petA.id);
     expect(await Q.getRecord(db, recordB.id)).not.toBeNull();
+    expect(await Q.listRecordsForPet(db, petB.id)).toHaveLength(1);
   });
 });
 
@@ -125,11 +142,56 @@ describe('records', () => {
     expect(updated?.id).toBe(record.id);
   });
 
-  it('deletes a record', async () => {
+  it('tombstones a record instead of physically deleting it, and drops it from listRecordsForPet', async () => {
     const pet = await Q.createPet(db, newPet());
     const record = await Q.createRecord(db, newRecord(pet.id));
     await Q.deleteRecord(db, record.id);
-    expect(await Q.getRecord(db, record.id)).toBeNull();
+
+    expect(await Q.listRecordsForPet(db, pet.id)).toEqual([]);
+
+    const row = await db.getFirstAsync<{ deleted_at: string | null; dirty: number }>(
+      'SELECT deleted_at, dirty FROM records WHERE id = ?',
+      [record.id],
+    );
+    expect(row?.deleted_at).not.toBeNull();
+    expect(row?.dirty).toBe(1);
+  });
+});
+
+describe('sync scaffolding (dirty/updated_at stamping)', () => {
+  const syncColumns = async (table: 'pets' | 'records', id: string) =>
+    db.getFirstAsync<{ updated_at: string | null; dirty: number }>(
+      `SELECT updated_at, dirty FROM ${table} WHERE id = ?`,
+      [id],
+    );
+
+  it('stamps dirty=1 and a non-null updated_at on pet create, and bumps updated_at on update', async () => {
+    const pet = await Q.createPet(db, newPet());
+    const created = await syncColumns('pets', pet.id);
+    expect(created?.dirty).toBe(1);
+    expect(created?.updated_at).toEqual(expect.any(String));
+
+    await Q.updatePet(db, pet.id, newPet({ name: 'Milo Jr.' }));
+    const updated = await syncColumns('pets', pet.id);
+    expect(updated?.dirty).toBe(1);
+    expect(new Date(updated!.updated_at!).getTime()).toBeGreaterThanOrEqual(
+      new Date(created!.updated_at!).getTime(),
+    );
+  });
+
+  it('stamps dirty=1 and a non-null updated_at on record create, and bumps updated_at on update', async () => {
+    const pet = await Q.createPet(db, newPet());
+    const record = await Q.createRecord(db, newRecord(pet.id));
+    const created = await syncColumns('records', record.id);
+    expect(created?.dirty).toBe(1);
+    expect(created?.updated_at).toEqual(expect.any(String));
+
+    await Q.updateRecord(db, record.id, newRecord(pet.id, { details: 'follow-up' }));
+    const updated = await syncColumns('records', record.id);
+    expect(updated?.dirty).toBe(1);
+    expect(new Date(updated!.updated_at!).getTime()).toBeGreaterThanOrEqual(
+      new Date(created!.updated_at!).getTime(),
+    );
   });
 });
 

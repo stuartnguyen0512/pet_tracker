@@ -90,8 +90,13 @@ describe('first-time user journey (local, offline)', () => {
 
     await Q.deletePet(db, milo.id);
 
-    expect(await Q.getPet(db, milo.id)).toBeNull();
-    expect(await Q.getRecord(db, miloRecord.id)).toBeNull();
+    // Deletes are tombstoned (dirty/deleted_at), not physically removed, so
+    // sync can propagate them later — listPets/listRecordsForPet filter them
+    // back out for everything else in the app.
+    expect((await Q.listPets(db)).map(p => p.id)).not.toContain(milo.id);
+    expect(await Q.listRecordsForPet(db, milo.id)).not.toContainEqual(
+      expect.objectContaining({ id: miloRecord.id }),
+    );
     expect(await Q.getPet(db, bella.id)).not.toBeNull();
     expect(await Q.getRecord(db, bellaRecord.id)).not.toBeNull();
   });

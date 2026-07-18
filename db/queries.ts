@@ -42,6 +42,19 @@ function generateId(): string {
   return Crypto.randomUUID();
 }
 
+// SQLite has no native timestamptz type; storing ISO 8601 (not the bare
+// `datetime('now')` space-separated format) keeps local updated_at strings
+// directly comparable — both lexicographically and via `new Date(...)` — to
+// the ISO strings Supabase returns for its timestamptz columns.
+const NOW_ISO = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+
+// Explicit column lists (rather than `SELECT *`) so callers of these functions
+// keep getting the original Pet/HealthRecord shape — the sync columns
+// (updated_at, dirty, deleted_at) are an internal concern of db/database.ts
+// and lib/sync.ts, not part of the public row shape.
+const PET_COLUMNS = 'id, name, species, photo, birthdate';
+const RECORD_COLUMNS = 'id, pet_id, type, date, details, photo';
+
 // ---------------------------------------------------------------------------
 // Pets
 // ---------------------------------------------------------------------------
@@ -52,7 +65,7 @@ export async function createPet(
 ): Promise<Pet> {
   const pet: Pet = { id: generateId(), ...data };
   await db.runAsync(
-    'INSERT INTO pets (id, name, species, photo, birthdate) VALUES (?, ?, ?, ?, ?)',
+    `INSERT INTO pets (id, name, species, photo, birthdate, updated_at, dirty) VALUES (?, ?, ?, ?, ?, ${NOW_ISO}, 1)`,
     [pet.id, pet.name, pet.species, pet.photo, pet.birthdate],
   );
   return pet;
@@ -60,7 +73,7 @@ export async function createPet(
 
 export async function listPets(db: SQLiteDatabase): Promise<Pet[]> {
   const rows = await db.getAllAsync<PetRow>(
-    'SELECT * FROM pets ORDER BY rowid ASC',
+    `SELECT ${PET_COLUMNS} FROM pets WHERE deleted_at IS NULL ORDER BY rowid ASC`,
   );
   return rows.map(rowToPet);
 }
@@ -70,7 +83,7 @@ export async function getPet(
   id: string,
 ): Promise<Pet | null> {
   const row = await db.getFirstAsync<PetRow>(
-    'SELECT * FROM pets WHERE id = ?',
+    `SELECT ${PET_COLUMNS} FROM pets WHERE id = ?`,
     [id],
   );
   return row ? rowToPet(row) : null;
@@ -82,7 +95,7 @@ export async function updatePet(
   data: Omit<Pet, 'id'>,
 ): Promise<void> {
   await db.runAsync(
-    'UPDATE pets SET name = ?, species = ?, photo = ?, birthdate = ? WHERE id = ?',
+    `UPDATE pets SET name = ?, species = ?, photo = ?, birthdate = ?, updated_at = ${NOW_ISO}, dirty = 1 WHERE id = ?`,
     [data.name, data.species, data.photo, data.birthdate, id],
   );
 }
@@ -91,8 +104,19 @@ export async function deletePet(
   db: SQLiteDatabase,
   id: string,
 ): Promise<void> {
-  // ON DELETE CASCADE (defined in schema) removes the pet's records automatically
-  await db.runAsync('DELETE FROM pets WHERE id = ?', [id]);
+  // Tombstone, not a physical DELETE, so the deletion can propagate to
+  // Supabase on the next sync. ON DELETE CASCADE no longer fires (nothing is
+  // actually deleted), so the child records are tombstoned explicitly here.
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `UPDATE records SET deleted_at = ${NOW_ISO}, dirty = 1 WHERE pet_id = ? AND deleted_at IS NULL`,
+      [id],
+    );
+    await db.runAsync(
+      `UPDATE pets SET deleted_at = ${NOW_ISO}, dirty = 1 WHERE id = ?`,
+      [id],
+    );
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -105,7 +129,7 @@ export async function createRecord(
 ): Promise<HealthRecord> {
   const record: HealthRecord = { id: generateId(), ...data };
   await db.runAsync(
-    'INSERT INTO records (id, pet_id, type, date, details, photo) VALUES (?, ?, ?, ?, ?, ?)',
+    `INSERT INTO records (id, pet_id, type, date, details, photo, updated_at, dirty) VALUES (?, ?, ?, ?, ?, ?, ${NOW_ISO}, 1)`,
     [record.id, record.petId, record.type, record.date, record.details, record.photo],
   );
   return record;
@@ -116,7 +140,7 @@ export async function listRecordsForPet(
   petId: string,
 ): Promise<HealthRecord[]> {
   const rows = await db.getAllAsync<RecordRow>(
-    'SELECT * FROM records WHERE pet_id = ? ORDER BY date DESC, rowid DESC',
+    `SELECT ${RECORD_COLUMNS} FROM records WHERE pet_id = ? AND deleted_at IS NULL ORDER BY date DESC, rowid DESC`,
     [petId],
   );
   return rows.map(rowToRecord);
@@ -128,7 +152,7 @@ export async function updateRecord(
   data: Omit<HealthRecord, 'id'>,
 ): Promise<void> {
   await db.runAsync(
-    'UPDATE records SET pet_id = ?, type = ?, date = ?, details = ?, photo = ? WHERE id = ?',
+    `UPDATE records SET pet_id = ?, type = ?, date = ?, details = ?, photo = ?, updated_at = ${NOW_ISO}, dirty = 1 WHERE id = ?`,
     [data.petId, data.type, data.date, data.details, data.photo, id],
   );
 }
@@ -137,7 +161,10 @@ export async function deleteRecord(
   db: SQLiteDatabase,
   id: string,
 ): Promise<void> {
-  await db.runAsync('DELETE FROM records WHERE id = ?', [id]);
+  await db.runAsync(
+    `UPDATE records SET deleted_at = ${NOW_ISO}, dirty = 1 WHERE id = ?`,
+    [id],
+  );
 }
 
 export async function getRecord(
@@ -145,7 +172,7 @@ export async function getRecord(
   id: string,
 ): Promise<HealthRecord | null> {
   const row = await db.getFirstAsync<RecordRow>(
-    'SELECT * FROM records WHERE id = ?',
+    `SELECT ${RECORD_COLUMNS} FROM records WHERE id = ?`,
     [id],
   );
   return row ? rowToRecord(row) : null;
