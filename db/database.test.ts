@@ -12,7 +12,7 @@ describe('initDatabase', () => {
   it('advances PRAGMA user_version to the latest migration', async () => {
     const db = await initDatabase();
     const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
-    expect(row?.user_version).toBe(2);
+    expect(row?.user_version).toBe(3);
   });
 
   it('enables foreign key enforcement so ON DELETE CASCADE actually fires', async () => {
@@ -31,6 +31,18 @@ describe('initDatabase', () => {
         const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
         return row?.user_version;
       })(),
-    ).resolves.toBe(2);
+    ).resolves.toBe(3);
+  });
+
+  it('adds sync scaffolding columns to pets and records without touching migrations 1/2', async () => {
+    const db = await initDatabase();
+    const petColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(pets)');
+    const recordColumns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(records)');
+    expect(petColumns.map(c => c.name)).toEqual(
+      expect.arrayContaining(['updated_at', 'dirty', 'deleted_at']),
+    );
+    expect(recordColumns.map(c => c.name)).toEqual(
+      expect.arrayContaining(['updated_at', 'dirty', 'deleted_at']),
+    );
   });
 });
