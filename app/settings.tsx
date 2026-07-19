@@ -3,13 +3,14 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/theme';
 import { exportJson } from '../lib/export';
 import { initialOf } from '../lib/petDisplay';
+import { runSync } from '../lib/sync';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { pets, listRecordsForPet } = usePets();
+  const { pets, listRecordsForPet, db, refreshPets } = usePets();
   const { showToast } = useToast();
   const { isLoggedIn, isInitializing, logOut, user } = useUiSession();
 
@@ -34,13 +35,20 @@ export default function SettingsScreen() {
     }
   };
 
-  const onSyncNow = () => {
-    if (!isLoggedIn) {
+  const onSyncNow = async () => {
+    if (!isLoggedIn || !user) {
       router.push('/login');
       return;
     }
-    // UI only — no Supabase push/pull wired up yet.
-    showToast('Nothing to sync yet');
+    showToast('Syncing…');
+    try {
+      await runSync(db, user.id);
+      await refreshPets();
+      showToast('Synced');
+    } catch (e) {
+      console.error('[Settings] sync failed:', e);
+      showToast('Sync failed — please try again');
+    }
   };
 
   return (
