@@ -30,6 +30,12 @@ type PetsContextType = {
   // into SQLite, bypassing setPets, so callers must refresh state manually.
   refreshPets: () => Promise<void>;
 
+  // Hard-deletes all local pets/records and clears the sync cursor. Used on
+  // logout — accounts are personal-only, so a different account logging in
+  // later must never see this device's leftover local rows (they'd carry the
+  // old owner's data and collide with Supabase RLS on the next sync).
+  wipeAllLocal: () => Promise<void>;
+
   // Pet mutations — update both the DB and local pets[] atomically
   createPet: (data: Omit<Pet, 'id'>) => Promise<Pet>;
   updatePet: (id: string, data: Omit<Pet, 'id'>) => Promise<void>;
@@ -85,6 +91,11 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
     setPets(await Q.listPets(db!));
   }, [db]);
 
+  const wipeAllLocal = useCallback(async (): Promise<void> => {
+    await Q.wipeLocalData(db!);
+    setPets([]);
+  }, [db]);
+
   // --- Pet mutations ---
 
   const createPet = useCallback(async (data: Omit<Pet, 'id'>): Promise<Pet> => {
@@ -135,6 +146,7 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
         pets,
         db,
         refreshPets,
+        wipeAllLocal,
         createPet,
         updatePet,
         deletePet,

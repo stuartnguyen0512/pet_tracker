@@ -104,7 +104,7 @@ app/index.tsx              Pet list (home) — implemented; redirects to /onboar
 
 ### Sync Now UI
 
-`app/settings.tsx` has a real "Sync Now" button, correctly placed next to "Export All Data" per PRD §7.8, and correctly gated behind `isLoggedIn` (routes to `/login` if signed out). But `onSyncNow` is a stub — `showToast('Nothing to sync yet')`, no push/pull logic wired up (there's a code comment saying exactly this). Milestone 3 (dirty-flag columns + push/pull function) and the real half of milestone 4 (wiring this button to that function) are both still to build.
+**Done, verified 2026-07-19.** `app/settings.tsx`'s "Sync Now" button calls real `runSync` (`lib/sync.ts`), gated behind `isLoggedIn`. Feedback is in-button state (spinner/checkmark/error text), not the global toast — Settings is a `presentation: 'modal'` screen, and on iOS a native modal renders in its own layer above the whole app including the root-mounted Toast overlay, so toasts fired from inside it are invisible. See "Key decisions" → "Sync is manual, refined 2026-07-19" above for the other two trigger points (forced post-login, prompted post-pet-create) beyond this button.
 
 ### Monetization / subscription state
 
@@ -137,9 +137,13 @@ The project is migrating to per-user accounts and cross-device sync via Supabase
 ### Key decisions (already made, do not re-litigate without asking Min)
 
 - **SQLite stays the source of truth on-device.** Supabase is a synced copy, not a replacement — the app must keep working fully offline between syncs.
-- **Sync is manual** — a "Sync Now" action the user triggers, not automatic/background sync.
+- **Sync is manual, refined 2026-07-19** — still always a user-confirmed action (never silent/background), but no longer *only* the Settings "Sync Now" button. Three trigger points now exist, all requiring an explicit tap:
+  1. **Forced immediately after login/signup** (`app/login.tsx`, `app/signup.tsx`) — happens automatically as part of the login transition itself, before the user reaches the app, so a device that just switched accounts reconciles before anything else can touch local data. If it fails, the user is let in anyway with a warning toast — hybrid gating's "must always work offline" guarantee is not suspended by a failed forced sync (see "Accounts are optional" below).
+  2. **Prompted after creating a new pet** (`components/PetFormScreen.tsx`, create path only, not edit) — an ActionSheet asks "Sync this pet to your account now? / Not Now". Not asked on edits or on new records — only the pet-creation moment, to avoid nagging on every write.
+  3. **Manual, via Settings' "Sync Now"** — unchanged, still there for everything else.
+  Reason: dogfooding surfaced a real bug (Postgres `42501` RLS rejection) caused by local data surviving a logout and then getting pushed under a *different* account on the next sync — same local row `id`, different `owner_id`, RLS correctly refuses it. Fixing that required tying wipe-on-logout (see "Target auth" below) to *something* that repopulates local data afterward, which is what the forced post-login sync is for.
 - **Personal-only accounts** — no sharing/collaboration between different users. This is why the sync design below can get away with silent last-write-wins instead of real conflict resolution or a dedicated sync engine.
-- **Accounts are optional (hybrid gating)** — see "Architecture — current state" → Auth above. Login is required only for Sync Now and once trial/subscription lapses, not for core app use.
+- **Accounts are optional (hybrid gating)** — see "Architecture — current state" → Auth above. Login is required only for Sync Now and once trial/subscription lapses, not for core app use. This still holds even for the forced post-login sync above: a failed forced sync does not block app entry.
 - **v1 local dogfooding data is not migrated** — v2 starts fresh, no migration script needed.
 - Deliberately **not** using a third-party offline-sync engine (e.g. PowerSync) — evaluated and skipped since personal-only accounts don't need real conflict resolution; a hand-rolled dirty-flag outbox is enough. Reconsider only if sync bugs prove hard to get right by hand.
 
@@ -158,7 +162,9 @@ Local schema needs `updated_at` / `dirty` / `deleted` columns (added via new mig
 
 ### Target auth
 
-Supabase Auth, two providers: email/password (**done**) and Sign in with Apple (**stub UI only, not built**). Apple requires offering Sign in with Apple if any other third-party login is offered, which is why both are in scope together — do not ship email/password without also shipping Sign in with Apple; this blocks App Store submission (Guideline 4.8) if skipped. **Building Sign in with Apple requires a paid Apple Developer Program enrollment** (native entitlement, needs EAS Build / custom dev client — will not work in Expo Go) — confirm Min has completed enrollment before starting this ticket. Per the hybrid gating decision above, session does **not** gate app entry — do not add a blanket redirect-to-login in `app/_layout.tsx`. **Logout clears local data immediately** — show a confirmation warning first (this is a destructive, irreversible local action), not a silent wipe. See PRD §7.7.
+Supabase Auth, two providers: email/password (**done**) and Sign in with Apple (**stub UI only, not built**). Apple requires offering Sign in with Apple if any other third-party login is offered, which is why both are in scope together — do not ship email/password without also shipping Sign in with Apple; this blocks App Store submission (Guideline 4.8) if skipped. **Building Sign in with Apple requires a paid Apple Developer Program enrollment** (native entitlement, needs EAS Build / custom dev client — will not work in Expo Go) — confirm Min has completed enrollment before starting this ticket. Per the hybrid gating decision above, session does **not** gate app entry — do not add a blanket redirect-to-login in `app/_layout.tsx`.
+
+**Logout clears local data immediately — done 2026-07-19** (`app/settings.tsx`'s `onAccountRowPress`, `db/queries.ts`'s `wipeLocalData`/`hasDirtyData`, `store/pets.tsx`'s `wipeAllLocal`). Confirms first only if there's unsynced (`dirty = 1`) data — if everything's already synced there's nothing to lose, so it wipes silently. This is not just a UX nicety: it's the fix for the `42501` RLS bug above — without it, a second account logging in on the same device inherits the first account's local rows and its `owner_id` mismatch gets rejected by Supabase on the next sync. The sync cursor (`last_synced_at`) is cleared too, so the next login does a full pull rather than an incremental one against an empty local DB.
 
 ### Target photo sync
 

@@ -15,8 +15,10 @@ import {
 import { colors } from '../constants/theme';
 import { fromIsoDate, toIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
+import { runSync } from '../lib/sync';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
+import { useUiSession } from '../store/uiSession';
 import { Pet } from '../types';
 
 const SPECIES_OPTIONS = ['Dog', 'Cat', 'Other'] as const;
@@ -39,8 +41,9 @@ async function pickImage(source: 'camera' | 'library'): Promise<string | null> {
 
 export function PetFormScreen({ pet }: { pet?: Pet }) {
   const router = useRouter();
-  const { createPet, updatePet, deletePet, listRecordsForPet } = usePets();
+  const { createPet, updatePet, deletePet, listRecordsForPet, db, refreshPets } = usePets();
   const { showToast } = useToast();
+  const { isLoggedIn, user } = useUiSession();
 
   const [name, setName] = useState(pet?.name ?? '');
   const [species, setSpecies] = useState<string>(pet?.species ?? 'Dog');
@@ -85,10 +88,39 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
     try {
       if (pet) {
         await updatePet(pet.id, data);
-      } else {
-        await createPet(data);
+        router.back();
+        return;
       }
-      router.back();
+
+      await createPet(data);
+
+      // Only prompt on create, not edit — an "edit" already happened to a
+      // pet that's presumably been synced before, so it's just one more
+      // dirty row same as any other; asking every time would get old fast.
+      // A brand new pet is the one moment worth interrupting for.
+      if (isLoggedIn && user) {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            message: 'Sync this pet to your account now?',
+            options: ['Sync Now', 'Not Now'],
+            cancelButtonIndex: 1,
+          },
+          async buttonIndex => {
+            if (buttonIndex === 0) {
+              try {
+                await runSync(db, user.id);
+                await refreshPets();
+              } catch (e) {
+                console.error('[PetFormScreen] sync failed:', e);
+                showToast('Sync failed — you can retry from Settings');
+              }
+            }
+            router.back();
+          },
+        );
+      } else {
+        router.back();
+      }
     } catch (e) {
       console.error('[PetFormScreen] save failed:', e);
       showToast('Could not save — please try again');
