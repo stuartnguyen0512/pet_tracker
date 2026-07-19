@@ -21,6 +21,15 @@ type PetsContextType = {
   // hook, just split across two levels).
   pets: Pet[];
 
+  // Exposed so callers that write to SQLite directly (e.g. lib/sync.ts's
+  // runSync, from Settings) can do so without duplicating query logic here.
+  db: SQLiteDatabase;
+
+  // Reloads pets[] from SQLite. Needed after anything that writes to the DB
+  // without going through the mutations below — runSync merges rows straight
+  // into SQLite, bypassing setPets, so callers must refresh state manually.
+  refreshPets: () => Promise<void>;
+
   // Pet mutations — update both the DB and local pets[] atomically
   createPet: (data: Omit<Pet, 'id'>) => Promise<Pet>;
   updatePet: (id: string, data: Omit<Pet, 'id'>) => Promise<void>;
@@ -72,6 +81,10 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false; };
   }, []);
 
+  const refreshPets = useCallback(async (): Promise<void> => {
+    setPets(await Q.listPets(db!));
+  }, [db]);
+
   // --- Pet mutations ---
 
   const createPet = useCallback(async (data: Omit<Pet, 'id'>): Promise<Pet> => {
@@ -120,6 +133,8 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
     <PetsContext.Provider
       value={{
         pets,
+        db,
+        refreshPets,
         createPet,
         updatePet,
         deletePet,
