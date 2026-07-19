@@ -1,5 +1,6 @@
 import { useRouter } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/theme';
 import { exportJson } from '../lib/export';
 import { initialOf } from '../lib/petDisplay';
@@ -8,11 +9,25 @@ import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
 
+type SyncState = 'idle' | 'syncing' | 'success' | 'error';
+
 export default function SettingsScreen() {
   const router = useRouter();
   const { pets, listRecordsForPet, db, refreshPets } = usePets();
   const { showToast } = useToast();
   const { isLoggedIn, isInitializing, logOut, user } = useUiSession();
+
+  // Settings is presented as a modal (see app/_layout.tsx) — on iOS a native
+  // modal renders in its own layer above everything, including the global
+  // Toast overlay mounted at the app root, so toasts fired from in here are
+  // invisible. Sync status has to live in the button itself instead, since
+  // the button is guaranteed to be on top of whatever it's rendered inside.
+  const [syncState, setSyncState] = useState<SyncState>('idle');
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+  }, []);
 
   const onExportAll = async () => {
     showToast('Preparing…');
@@ -40,15 +55,17 @@ export default function SettingsScreen() {
       router.push('/login');
       return;
     }
-    showToast('Syncing…');
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    setSyncState('syncing');
     try {
       await runSync(db, user.id);
       await refreshPets();
-      showToast('Synced');
+      setSyncState('success');
     } catch (e) {
       console.error('[Settings] sync failed:', e);
-      showToast('Sync failed — please try again');
+      setSyncState('error');
     }
+    resetTimer.current = setTimeout(() => setSyncState('idle'), 1800);
   };
 
   return (
@@ -103,8 +120,29 @@ export default function SettingsScreen() {
         </Pressable>
         <Text style={styles.exportHint}>Saves a file you can share or back up.</Text>
 
-        <Pressable style={styles.syncButton} onPress={onSyncNow}>
-          <Text style={styles.syncButtonText}>Sync Now</Text>
+        <Pressable
+          style={({ pressed }) => [
+            styles.syncButton,
+            pressed && styles.syncButtonPressed,
+            syncState === 'syncing' && styles.syncButtonDisabled,
+          ]}
+          onPress={onSyncNow}
+          disabled={syncState === 'syncing'}
+        >
+          {syncState === 'syncing' ? (
+            <View style={styles.syncButtonRow}>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.syncButtonText}>Syncing…</Text>
+            </View>
+          ) : syncState === 'success' ? (
+            <Text style={styles.syncButtonText}>✓ Synced</Text>
+          ) : syncState === 'error' ? (
+            <Text style={[styles.syncButtonText, styles.syncButtonTextError]}>
+              Sync failed — tap to retry
+            </Text>
+          ) : (
+            <Text style={styles.syncButtonText}>Sync Now</Text>
+          )}
         </Pressable>
         <Text style={styles.exportHint}>{isLoggedIn ? 'Never synced.' : 'Log in to enable sync.'}</Text>
 
@@ -251,10 +289,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  syncButtonPressed: {
+    backgroundColor: colors.accentWeak,
+  },
+  syncButtonDisabled: {
+    opacity: 0.7,
+  },
+  syncButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   syncButtonText: {
     color: colors.accent,
     fontSize: 17,
     fontWeight: '600',
+  },
+  syncButtonTextError: {
+    color: colors.danger,
   },
   exportHint: {
     fontSize: 13,
