@@ -211,3 +211,38 @@ describe('settings', () => {
     expect(await Q.getSetting(db, 'exampleKey')).toBe('0');
   });
 });
+
+describe('account switch / logout data lifecycle', () => {
+  it('hasDirtyData is false on a clean db and true right after a create', async () => {
+    expect(await Q.hasDirtyData(db)).toBe(false);
+    await Q.createPet(db, newPet());
+    expect(await Q.hasDirtyData(db)).toBe(true);
+  });
+
+  it('hasDirtyData is true from a dirty record even when pets are all clean', async () => {
+    const pet = await Q.createPet(db, newPet());
+    await db.runAsync('UPDATE pets SET dirty = 0 WHERE id = ?', [pet.id]);
+    expect(await Q.hasDirtyData(db)).toBe(false);
+
+    await Q.createRecord(db, newRecord(pet.id));
+    expect(await Q.hasDirtyData(db)).toBe(true);
+  });
+
+  it('wipeLocalData removes every pet and record and leaves hasDirtyData false', async () => {
+    const pet = await Q.createPet(db, newPet());
+    await Q.createRecord(db, newRecord(pet.id));
+
+    await Q.wipeLocalData(db);
+
+    expect(await Q.listPets(db)).toEqual([]);
+    expect(await db.getFirstAsync('SELECT id FROM pets')).toBeNull();
+    expect(await db.getFirstAsync('SELECT id FROM records')).toBeNull();
+    expect(await Q.hasDirtyData(db)).toBe(false);
+  });
+
+  it('wipeLocalData clears the sync cursor so the next login does a full pull', async () => {
+    await Q.setSetting(db, 'last_synced_at', '2024-01-01T00:00:00.000Z');
+    await Q.wipeLocalData(db);
+    expect(await Q.getSetting(db, 'last_synced_at')).toBeNull();
+  });
+});

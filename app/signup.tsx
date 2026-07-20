@@ -11,16 +11,22 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/theme';
+import { runSync } from '../lib/sync';
 import { supabase } from '../lib/supabaseClient';
+import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
+
+type Phase = 'idle' | 'authenticating' | 'syncing';
 
 export default function SignupScreen() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { db, refreshPets } = usePets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const isSubmitting = phase !== 'idle';
 
   const passwordsMatch = password.length > 0 && password === confirmPassword;
   const canSubmit =
@@ -28,15 +34,26 @@ export default function SignupScreen() {
 
   const onCreateAccount = async () => {
     if (!canSubmit) return;
-    setIsSubmitting(true);
+    setPhase('authenticating');
     try {
       const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
       if (error) {
         showToast(error.message);
         return;
       }
-      if (data.session) {
+      if (data.session && data.user) {
         // Confirmations off on this project — account is usable immediately.
+        // Force a sync right away: any pets logged anonymously before signing
+        // up are still sitting locally with dirty=1 and need pushing up as
+        // this brand-new account's first sync.
+        setPhase('syncing');
+        try {
+          await runSync(db, data.user.id);
+          await refreshPets();
+        } catch (e) {
+          console.error('[Signup] initial sync failed:', e);
+          showToast('Account created — sync failed, you can retry from Settings');
+        }
         router.dismissTo('/');
       } else {
         // Confirmations required — don't pretend the user is signed in yet.
@@ -47,7 +64,7 @@ export default function SignupScreen() {
       console.error('[Signup] sign up failed:', e);
       showToast('Could not create account — please try again');
     } finally {
-      setIsSubmitting(false);
+      setPhase('idle');
     }
   };
 
@@ -121,7 +138,9 @@ export default function SignupScreen() {
           onPress={onCreateAccount}
           disabled={!canSubmit}
         >
-          <Text style={styles.primaryButtonText}>Create Account</Text>
+          <Text style={styles.primaryButtonText}>
+            {phase === 'authenticating' ? 'Creating Account…' : phase === 'syncing' ? 'Syncing…' : 'Create Account'}
+          </Text>
         </Pressable>
 
         <View style={styles.dividerRow}>

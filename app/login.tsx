@@ -11,33 +11,53 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/theme';
+import { runSync } from '../lib/sync';
 import { supabase } from '../lib/supabaseClient';
+import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
+
+type Phase = 'idle' | 'authenticating' | 'syncing';
 
 export default function LoginScreen() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { db, refreshPets } = usePets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [phase, setPhase] = useState<Phase>('idle');
+  const isSubmitting = phase !== 'idle';
 
   const canSubmit = email.trim().length > 0 && password.length > 0 && !isSubmitting;
 
   const onLogIn = async () => {
     if (!canSubmit) return;
-    setIsSubmitting(true);
+    setPhase('authenticating');
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) {
         showToast('Invalid email or password');
         return;
+      }
+      // Force a sync right after login, before the user ever sees the app in
+      // this session — this is what restores pets synced from other devices,
+      // and it's the only point a fresh account swap on this device gets
+      // reconciled. If it fails, don't block entry: the app must still work
+      // fully offline (hybrid gating), so let them in and they can retry
+      // from Settings.
+      setPhase('syncing');
+      try {
+        await runSync(db, data.user.id);
+        await refreshPets();
+      } catch (e) {
+        console.error('[Login] initial sync failed:', e);
+        showToast('Logged in — sync failed, you can retry from Settings');
       }
       router.dismissTo('/');
     } catch (e) {
       console.error('[Login] sign in failed:', e);
       showToast('Could not log in — please try again');
     } finally {
-      setIsSubmitting(false);
+      setPhase('idle');
     }
   };
 
@@ -95,7 +115,9 @@ export default function LoginScreen() {
           onPress={onLogIn}
           disabled={!canSubmit}
         >
-          <Text style={styles.primaryButtonText}>Log In</Text>
+          <Text style={styles.primaryButtonText}>
+            {phase === 'authenticating' ? 'Logging In…' : phase === 'syncing' ? 'Syncing…' : 'Log In'}
+          </Text>
         </Pressable>
 
         <View style={styles.dividerRow}>

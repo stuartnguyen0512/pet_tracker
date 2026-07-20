@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/theme';
+import * as Q from '../db/queries';
 import { exportJson } from '../lib/export';
 import { initialOf } from '../lib/petDisplay';
 import { runSync } from '../lib/sync';
@@ -13,7 +14,7 @@ type SyncState = 'idle' | 'syncing' | 'success' | 'error';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { pets, listRecordsForPet, db, refreshPets } = usePets();
+  const { pets, listRecordsForPet, db, refreshPets, wipeAllLocal } = usePets();
   const { showToast } = useToast();
   const { isLoggedIn, isInitializing, logOut, user } = useUiSession();
 
@@ -36,18 +37,43 @@ export default function SettingsScreen() {
     showToast(ok ? 'Export saved' : 'Sharing unavailable');
   };
 
-  const onAccountRowPress = async () => {
-    if (isLoggedIn) {
-      try {
-        await logOut();
-        showToast('Logged out');
-      } catch (e) {
-        console.error('[Settings] sign out failed:', e);
-        showToast('Could not log out — please try again');
-      }
-    } else {
-      router.push('/login');
+  // Accounts are personal-only (no sharing) — a device's local SQLite must
+  // never straddle two accounts, or the next sync's upsert collides with the
+  // previous owner's Supabase RLS policy (owner_id = auth.uid()) and gets
+  // rejected outright. So logout always wipes local data; it only pauses to
+  // confirm first when that would actually lose unsynced work.
+  const performLogout = async () => {
+    try {
+      await logOut();
+      await wipeAllLocal();
+      showToast('Logged out');
+    } catch (e) {
+      console.error('[Settings] sign out failed:', e);
+      showToast('Could not log out — please try again');
     }
+  };
+
+  const onAccountRowPress = async () => {
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+    const dirty = await Q.hasDirtyData(db);
+    if (!dirty) {
+      await performLogout();
+      return;
+    }
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        message: "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it.",
+        options: ['Log Out', 'Cancel'],
+        destructiveButtonIndex: 0,
+        cancelButtonIndex: 1,
+      },
+      buttonIndex => {
+        if (buttonIndex === 0) performLogout();
+      },
+    );
   };
 
   const onSyncNow = async () => {
