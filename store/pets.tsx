@@ -8,7 +8,7 @@ import React, {
 import { SQLiteDatabase } from 'expo-sqlite';
 import { initDatabase } from '../db/database';
 import * as Q from '../db/queries';
-import { HealthRecord, Pet } from '../types';
+import { HealthRecord, HealthRecordInput, Pet, PetInput } from '../types';
 
 // ---------------------------------------------------------------------------
 // Context type
@@ -37,15 +37,15 @@ type PetsContextType = {
   wipeAllLocal: () => Promise<void>;
 
   // Pet mutations — update both the DB and local pets[] atomically
-  createPet: (data: Omit<Pet, 'id'>) => Promise<Pet>;
-  updatePet: (id: string, data: Omit<Pet, 'id'>) => Promise<void>;
+  createPet: (data: PetInput) => Promise<Pet>;
+  updatePet: (id: string, data: PetInput) => Promise<void>;
   deletePet: (id: string) => Promise<void>;
 
   // Record operations — thin DB pass-throughs; callers own their own state
-  createRecord: (data: Omit<HealthRecord, 'id'>) => Promise<HealthRecord>;
+  createRecord: (data: HealthRecordInput) => Promise<HealthRecord>;
   listRecordsForPet: (petId: string) => Promise<HealthRecord[]>;
   getRecord: (id: string) => Promise<HealthRecord | null>;
-  updateRecord: (id: string, data: Omit<HealthRecord, 'id'>) => Promise<void>;
+  updateRecord: (id: string, data: HealthRecordInput) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
 };
 
@@ -98,15 +98,18 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
 
   // --- Pet mutations ---
 
-  const createPet = useCallback(async (data: Omit<Pet, 'id'>): Promise<Pet> => {
+  const createPet = useCallback(async (data: PetInput): Promise<Pet> => {
     const pet = await Q.createPet(db!, data);
     setPets(prev => [...prev, pet]);
     return pet;
   }, [db]);
 
-  const updatePet = useCallback(async (id: string, data: Omit<Pet, 'id'>): Promise<void> => {
+  const updatePet = useCallback(async (id: string, data: PetInput): Promise<void> => {
     await Q.updatePet(db!, id, data);
-    setPets(prev => prev.map(p => (p.id === id ? { id, ...data } : p)));
+    // Spread the previous pet first (not just `id`) so dirty/deletedAt carry
+    // forward rather than needing to be fabricated here — then force
+    // dirty: true since updatePet's SQL always sets dirty = 1 on any write.
+    setPets(prev => prev.map(p => (p.id === id ? { ...p, ...data, dirty: true } : p)));
   }, [db]);
 
   const deletePet = useCallback(async (id: string): Promise<void> => {
@@ -117,7 +120,7 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
   // --- Record pass-throughs ---
 
   const createRecord = useCallback(
-    (data: Omit<HealthRecord, 'id'>) => Q.createRecord(db!, data),
+    (data: HealthRecordInput) => Q.createRecord(db!, data),
     [db],
   );
   const listRecordsForPet = useCallback(
@@ -129,7 +132,7 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
     [db],
   );
   const updateRecord = useCallback(
-    (id: string, data: Omit<HealthRecord, 'id'>) => Q.updateRecord(db!, id, data),
+    (id: string, data: HealthRecordInput) => Q.updateRecord(db!, id, data),
     [db],
   );
   const deleteRecord = useCallback(

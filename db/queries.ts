@@ -1,6 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import { SQLiteDatabase } from 'expo-sqlite';
-import { HealthRecord, Pet, RecordType } from '../types';
+import { HealthRecord, HealthRecordInput, Pet, PetInput, RecordType } from '../types';
 
 // ---------------------------------------------------------------------------
 // Internal row types (SQLite column names → TS field names differ for records)
@@ -12,6 +12,8 @@ type PetRow = {
   species: string;
   photo: string | null;
   birthdate: string | null;
+  dirty: number;
+  deleted_at: string | null;
 };
 
 type RecordRow = {
@@ -21,10 +23,20 @@ type RecordRow = {
   date: string;
   details: string;
   photo: string | null;
+  dirty: number;
+  deleted_at: string | null;
 };
 
 function rowToPet(row: PetRow): Pet {
-  return row;
+  return {
+    id: row.id,
+    name: row.name,
+    species: row.species,
+    photo: row.photo,
+    birthdate: row.birthdate,
+    dirty: !!row.dirty,
+    deletedAt: row.deleted_at,
+  };
 }
 
 function rowToRecord(row: RecordRow): HealthRecord {
@@ -35,6 +47,8 @@ function rowToRecord(row: RecordRow): HealthRecord {
     date: row.date,
     details: row.details,
     photo: row.photo,
+    dirty: !!row.dirty,
+    deletedAt: row.deleted_at,
   };
 }
 
@@ -48,12 +62,12 @@ function generateId(): string {
 // the ISO strings Supabase returns for its timestamptz columns.
 const NOW_ISO = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
-// Explicit column lists (rather than `SELECT *`) so callers of these functions
-// keep getting the original Pet/HealthRecord shape — the sync columns
-// (updated_at, dirty, deleted_at) are an internal concern of db/database.ts
-// and lib/sync.ts, not part of the public row shape.
-const PET_COLUMNS = 'id, name, species, photo, birthdate';
-const RECORD_COLUMNS = 'id, pet_id, type, date, details, photo';
+// Explicit column lists (rather than `SELECT *`) so we control exactly what
+// reaches the public Pet/HealthRecord shape. `dirty`/`deleted_at` are
+// included deliberately (MIN-46) — `updated_at` still isn't, since nothing
+// outside lib/sync.ts needs it.
+const PET_COLUMNS = 'id, name, species, photo, birthdate, dirty, deleted_at';
+const RECORD_COLUMNS = 'id, pet_id, type, date, details, photo, dirty, deleted_at';
 
 // ---------------------------------------------------------------------------
 // Pets
@@ -61,9 +75,9 @@ const RECORD_COLUMNS = 'id, pet_id, type, date, details, photo';
 
 export async function createPet(
   db: SQLiteDatabase,
-  data: Omit<Pet, 'id'>,
+  data: PetInput,
 ): Promise<Pet> {
-  const pet: Pet = { id: generateId(), ...data };
+  const pet: Pet = { id: generateId(), ...data, dirty: true, deletedAt: null };
   await db.runAsync(
     `INSERT INTO pets (id, name, species, photo, birthdate, updated_at, dirty) VALUES (?, ?, ?, ?, ?, ${NOW_ISO}, 1)`,
     [pet.id, pet.name, pet.species, pet.photo, pet.birthdate],
@@ -71,9 +85,13 @@ export async function createPet(
   return pet;
 }
 
+// Includes rows tombstoned but not yet synced (dirty = 1) so the UI can
+// still show a pending delete instead of it vanishing before the deletion
+// has actually propagated anywhere — a fully-synced tombstone (dirty = 0)
+// is dropped same as before.
 export async function listPets(db: SQLiteDatabase): Promise<Pet[]> {
   const rows = await db.getAllAsync<PetRow>(
-    `SELECT ${PET_COLUMNS} FROM pets WHERE deleted_at IS NULL ORDER BY rowid ASC`,
+    `SELECT ${PET_COLUMNS} FROM pets WHERE deleted_at IS NULL OR dirty = 1 ORDER BY rowid ASC`,
   );
   return rows.map(rowToPet);
 }
@@ -92,7 +110,7 @@ export async function getPet(
 export async function updatePet(
   db: SQLiteDatabase,
   id: string,
-  data: Omit<Pet, 'id'>,
+  data: PetInput,
 ): Promise<void> {
   await db.runAsync(
     `UPDATE pets SET name = ?, species = ?, photo = ?, birthdate = ?, updated_at = ${NOW_ISO}, dirty = 1 WHERE id = ?`,
@@ -125,9 +143,9 @@ export async function deletePet(
 
 export async function createRecord(
   db: SQLiteDatabase,
-  data: Omit<HealthRecord, 'id'>,
+  data: HealthRecordInput,
 ): Promise<HealthRecord> {
-  const record: HealthRecord = { id: generateId(), ...data };
+  const record: HealthRecord = { id: generateId(), ...data, dirty: true, deletedAt: null };
   await db.runAsync(
     `INSERT INTO records (id, pet_id, type, date, details, photo, updated_at, dirty) VALUES (?, ?, ?, ?, ?, ?, ${NOW_ISO}, 1)`,
     [record.id, record.petId, record.type, record.date, record.details, record.photo],
@@ -135,12 +153,13 @@ export async function createRecord(
   return record;
 }
 
+// Same dirty-tombstone carve-out as listPets — see its comment above.
 export async function listRecordsForPet(
   db: SQLiteDatabase,
   petId: string,
 ): Promise<HealthRecord[]> {
   const rows = await db.getAllAsync<RecordRow>(
-    `SELECT ${RECORD_COLUMNS} FROM records WHERE pet_id = ? AND deleted_at IS NULL ORDER BY date DESC, rowid DESC`,
+    `SELECT ${RECORD_COLUMNS} FROM records WHERE pet_id = ? AND (deleted_at IS NULL OR dirty = 1) ORDER BY date DESC, rowid DESC`,
     [petId],
   );
   return rows.map(rowToRecord);
@@ -149,7 +168,7 @@ export async function listRecordsForPet(
 export async function updateRecord(
   db: SQLiteDatabase,
   id: string,
-  data: Omit<HealthRecord, 'id'>,
+  data: HealthRecordInput,
 ): Promise<void> {
   await db.runAsync(
     `UPDATE records SET pet_id = ?, type = ?, date = ?, details = ?, photo = ?, updated_at = ${NOW_ISO}, dirty = 1 WHERE id = ?`,
