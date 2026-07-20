@@ -91,14 +91,23 @@ describe('first-time user journey (local, offline)', () => {
     await Q.deletePet(db, milo.id);
 
     // Deletes are tombstoned (dirty/deleted_at), not physically removed, so
-    // sync can propagate them later — listPets/listRecordsForPet filter them
-    // back out for everything else in the app.
-    expect((await Q.listPets(db)).map(p => p.id)).not.toContain(milo.id);
-    expect(await Q.listRecordsForPet(db, milo.id)).not.toContainEqual(
-      expect.objectContaining({ id: miloRecord.id }),
+    // sync can propagate them later. MIN-46: as long as the tombstone is
+    // still unsynced (dirty), listPets/listRecordsForPet keep it around
+    // (marked via deletedAt) rather than dropping it before the deletion has
+    // actually reached Supabase — a future UI ticket dims these. Bella,
+    // never touched, stays completely normal.
+    const miloAfterDelete = (await Q.listPets(db)).find(p => p.id === milo.id);
+    expect(miloAfterDelete?.deletedAt).not.toBeNull();
+    expect(miloAfterDelete?.dirty).toBe(true);
+    const miloRecordAfterDelete = (await Q.listRecordsForPet(db, milo.id)).find(r => r.id === miloRecord.id);
+    expect(miloRecordAfterDelete?.deletedAt).not.toBeNull();
+
+    expect(await Q.getPet(db, bella.id)).toEqual(
+      expect.objectContaining({ id: bella.id, dirty: true, deletedAt: null }),
     );
-    expect(await Q.getPet(db, bella.id)).not.toBeNull();
-    expect(await Q.getRecord(db, bellaRecord.id)).not.toBeNull();
+    expect(await Q.getRecord(db, bellaRecord.id)).toEqual(
+      expect.objectContaining({ id: bellaRecord.id, dirty: true, deletedAt: null }),
+    );
   });
 
   // --- Account + cloud sync leg of the journey ---

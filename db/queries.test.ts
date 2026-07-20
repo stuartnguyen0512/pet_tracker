@@ -1,7 +1,7 @@
 import { initDatabase } from './database';
 import * as Q from './queries';
 import { SQLiteDatabase } from 'expo-sqlite';
-import { HealthRecord, Pet } from '../types';
+import { HealthRecordInput, PetInput } from '../types';
 
 let db: SQLiteDatabase;
 
@@ -9,7 +9,7 @@ beforeEach(async () => {
   db = await initDatabase();
 });
 
-const newPet = (overrides: Partial<Omit<Pet, 'id'>> = {}): Omit<Pet, 'id'> => ({
+const newPet = (overrides: Partial<PetInput> = {}): PetInput => ({
   name: 'Milo',
   species: 'Dog',
   photo: null,
@@ -17,7 +17,7 @@ const newPet = (overrides: Partial<Omit<Pet, 'id'>> = {}): Omit<Pet, 'id'> => ({
   ...overrides,
 });
 
-const newRecord = (petId: string, overrides: Partial<Omit<HealthRecord, 'id'>> = {}): Omit<HealthRecord, 'id'> => ({
+const newRecord = (petId: string, overrides: Partial<HealthRecordInput> = {}): HealthRecordInput => ({
   petId,
   type: 'Note',
   date: '2024-01-01',
@@ -51,36 +51,46 @@ describe('pets', () => {
     const pet = await Q.createPet(db, newPet());
     await Q.updatePet(db, pet.id, newPet({ name: 'Milo Jr.', species: 'Cat' }));
     const updated = await Q.getPet(db, pet.id);
-    expect(updated).toEqual({ id: pet.id, name: 'Milo Jr.', species: 'Cat', photo: null, birthdate: null });
+    expect(updated).toEqual({
+      id: pet.id,
+      name: 'Milo Jr.',
+      species: 'Cat',
+      photo: null,
+      birthdate: null,
+      dirty: true,
+      deletedAt: null,
+    });
   });
 
-  it('tombstones a pet instead of physically deleting it, and drops it from listPets', async () => {
+  // MIN-46: listPets/listRecordsForPet now keep a tombstoned row around as
+  // long as it's still dirty (unsynced) — a future UI ticket dims these
+  // instead of letting them vanish before the delete has actually
+  // propagated anywhere. Only a fully-synced tombstone (dirty = 0) drops.
+  it('tombstones a pet instead of physically deleting it; stays in listPets while unsynced, drops once synced', async () => {
     const pet = await Q.createPet(db, newPet());
     await Q.deletePet(db, pet.id);
 
-    expect((await Q.listPets(db)).map(p => p.id)).not.toContain(pet.id);
+    const stillPending = (await Q.listPets(db)).find(p => p.id === pet.id);
+    expect(stillPending).toBeDefined();
+    expect(stillPending?.dirty).toBe(true);
+    expect(stillPending?.deletedAt).not.toBeNull();
 
-    const row = await db.getFirstAsync<{ deleted_at: string | null; dirty: number }>(
-      'SELECT deleted_at, dirty FROM pets WHERE id = ?',
-      [pet.id],
-    );
-    expect(row?.deleted_at).not.toBeNull();
-    expect(row?.dirty).toBe(1);
+    await db.runAsync('UPDATE pets SET dirty = 0 WHERE id = ?', [pet.id]);
+    expect((await Q.listPets(db)).map(p => p.id)).not.toContain(pet.id);
   });
 
-  it('cascades pet deletion to that pet’s records as tombstones, dropping them from listRecordsForPet', async () => {
+  it('cascades pet deletion to that pet’s records as tombstones; they stay in listRecordsForPet while unsynced, drop once synced', async () => {
     const pet = await Q.createPet(db, newPet());
     const record = await Q.createRecord(db, newRecord(pet.id));
     await Q.deletePet(db, pet.id);
 
-    expect(await Q.listRecordsForPet(db, pet.id)).toEqual([]);
+    const stillPending = (await Q.listRecordsForPet(db, pet.id)).find(r => r.id === record.id);
+    expect(stillPending).toBeDefined();
+    expect(stillPending?.dirty).toBe(true);
+    expect(stillPending?.deletedAt).not.toBeNull();
 
-    const row = await db.getFirstAsync<{ deleted_at: string | null; dirty: number }>(
-      'SELECT deleted_at, dirty FROM records WHERE id = ?',
-      [record.id],
-    );
-    expect(row?.deleted_at).not.toBeNull();
-    expect(row?.dirty).toBe(1);
+    await db.runAsync('UPDATE records SET dirty = 0 WHERE id = ?', [record.id]);
+    expect(await Q.listRecordsForPet(db, pet.id)).toEqual([]);
   });
 
   it('does not tombstone other pets’ records when one pet is deleted', async () => {
@@ -142,19 +152,18 @@ describe('records', () => {
     expect(updated?.id).toBe(record.id);
   });
 
-  it('tombstones a record instead of physically deleting it, and drops it from listRecordsForPet', async () => {
+  it('tombstones a record instead of physically deleting it; stays in listRecordsForPet while unsynced, drops once synced', async () => {
     const pet = await Q.createPet(db, newPet());
     const record = await Q.createRecord(db, newRecord(pet.id));
     await Q.deleteRecord(db, record.id);
 
-    expect(await Q.listRecordsForPet(db, pet.id)).toEqual([]);
+    const stillPending = (await Q.listRecordsForPet(db, pet.id)).find(r => r.id === record.id);
+    expect(stillPending).toBeDefined();
+    expect(stillPending?.dirty).toBe(true);
+    expect(stillPending?.deletedAt).not.toBeNull();
 
-    const row = await db.getFirstAsync<{ deleted_at: string | null; dirty: number }>(
-      'SELECT deleted_at, dirty FROM records WHERE id = ?',
-      [record.id],
-    );
-    expect(row?.deleted_at).not.toBeNull();
-    expect(row?.dirty).toBe(1);
+    await db.runAsync('UPDATE records SET dirty = 0 WHERE id = ?', [record.id]);
+    expect(await Q.listRecordsForPet(db, pet.id)).toEqual([]);
   });
 });
 

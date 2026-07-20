@@ -150,7 +150,9 @@ describe('runSync — pull + merge', () => {
     await runSync(db, USER_ID);
 
     const pets = await Q.listPets(db);
-    expect(pets).toEqual([{ id: 'remote-pet-1', name: 'Nova', species: 'Cat', photo: null, birthdate: null }]);
+    expect(pets).toEqual([
+      { id: 'remote-pet-1', name: 'Nova', species: 'Cat', photo: null, birthdate: null, dirty: false, deletedAt: null },
+    ]);
     const row = await db.getFirstAsync<{ dirty: number }>(
       'SELECT dirty FROM pets WHERE id = ?',
       ['remote-pet-1'],
@@ -288,7 +290,7 @@ describe('runSync — owner mismatch guard', () => {
     await runSync(db, USER_ID);
     await runSync(db, USER_ID);
     expect(await Q.listPets(db)).toEqual([
-      { id: pet.id, name: 'Milo', species: 'Dog', photo: null, birthdate: null },
+      { id: pet.id, name: 'Milo', species: 'Dog', photo: null, birthdate: null, dirty: false, deletedAt: null },
     ]);
   });
 
@@ -296,7 +298,7 @@ describe('runSync — owner mismatch guard', () => {
     const pet = await Q.createPet(db, newPet());
     await runSync(db, USER_ID);
     expect(await Q.listPets(db)).toEqual([
-      { id: pet.id, name: 'Milo', species: 'Dog', photo: null, birthdate: null },
+      { id: pet.id, name: 'Milo', species: 'Dog', photo: null, birthdate: null, dirty: false, deletedAt: null },
     ]);
   });
 });

@@ -1,4 +1,28 @@
-import { initialOf, speciesTint } from './petDisplay';
+import { HealthRecord, Pet } from '../types';
+import { hasUnsyncedChanges, initialOf, speciesTint } from './petDisplay';
+
+const clean = (overrides: Partial<Pet> = {}): Pet => ({
+  id: 'pet-1',
+  name: 'Milo',
+  species: 'Dog',
+  photo: null,
+  birthdate: null,
+  dirty: false,
+  deletedAt: null,
+  ...overrides,
+});
+
+const cleanRecord = (overrides: Partial<HealthRecord> = {}): HealthRecord => ({
+  id: 'record-1',
+  petId: 'pet-1',
+  type: 'Note',
+  date: '2024-01-01',
+  details: '',
+  photo: null,
+  dirty: false,
+  deletedAt: null,
+  ...overrides,
+});
 
 describe('speciesTint', () => {
   it('returns the cat tint for Cat', () => {
@@ -39,5 +63,24 @@ describe('initialOf', () => {
   // Native renders as a broken glyph in the avatar circle.
   it('returns the full leading character for a name starting with an emoji', () => {
     expect(initialOf('🐶Rex')).toBe('🐶');
+  });
+});
+
+describe('hasUnsyncedChanges', () => {
+  it('is false when the pet and all its records are clean', () => {
+    expect(hasUnsyncedChanges(clean(), [cleanRecord(), cleanRecord({ id: 'record-2' })])).toBe(false);
+  });
+
+  it('is true when the pet itself is dirty', () => {
+    expect(hasUnsyncedChanges(clean({ dirty: true }), [])).toBe(true);
+  });
+
+  it('is true when any one of its records is dirty, even if the pet is clean', () => {
+    const records = [cleanRecord(), cleanRecord({ id: 'record-2', dirty: true })];
+    expect(hasUnsyncedChanges(clean(), records)).toBe(true);
+  });
+
+  it('is false for a pet with no records at all', () => {
+    expect(hasUnsyncedChanges(clean(), [])).toBe(false);
   });
 });
