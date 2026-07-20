@@ -227,6 +227,18 @@ export async function setSetting(
 // Account switch / logout data lifecycle
 // ---------------------------------------------------------------------------
 
+// Cheap existence check (LIMIT 1, no row data) so the home list (MIN-47) can
+// know whether a pet has any unsynced record without loading that pet's
+// records — the home screen deliberately doesn't hold records in state (see
+// store/pets.tsx's state-split comment).
+export async function hasUnsyncedRecordsForPet(db: SQLiteDatabase, petId: string): Promise<boolean> {
+  const row = await db.getFirstAsync<{ found: number }>(
+    'SELECT 1 AS found FROM records WHERE pet_id = ? AND dirty = 1 LIMIT 1',
+    [petId],
+  );
+  return !!row;
+}
+
 export async function hasDirtyData(db: SQLiteDatabase): Promise<boolean> {
   const row = await db.getFirstAsync<{ n: number }>(
     `SELECT (SELECT COUNT(*) FROM pets WHERE dirty = 1) + (SELECT COUNT(*) FROM records WHERE dirty = 1) AS n`,

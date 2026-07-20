@@ -237,6 +237,25 @@ describe('account switch / logout data lifecycle', () => {
     expect(await Q.hasDirtyData(db)).toBe(true);
   });
 
+  it('hasUnsyncedRecordsForPet is false with no records, true once one is dirty, false once synced', async () => {
+    const pet = await Q.createPet(db, newPet());
+    expect(await Q.hasUnsyncedRecordsForPet(db, pet.id)).toBe(false);
+
+    const record = await Q.createRecord(db, newRecord(pet.id));
+    expect(await Q.hasUnsyncedRecordsForPet(db, pet.id)).toBe(true);
+
+    await db.runAsync('UPDATE records SET dirty = 0 WHERE id = ?', [record.id]);
+    expect(await Q.hasUnsyncedRecordsForPet(db, pet.id)).toBe(false);
+  });
+
+  it('hasUnsyncedRecordsForPet only looks at the given pet’s own records', async () => {
+    const petA = await Q.createPet(db, newPet({ name: 'A' }));
+    const petB = await Q.createPet(db, newPet({ name: 'B' }));
+    await Q.createRecord(db, newRecord(petB.id));
+    expect(await Q.hasUnsyncedRecordsForPet(db, petA.id)).toBe(false);
+    expect(await Q.hasUnsyncedRecordsForPet(db, petB.id)).toBe(true);
+  });
+
   it('wipeLocalData removes every pet and record and leaves hasDirtyData false', async () => {
     const pet = await Q.createPet(db, newPet());
     await Q.createRecord(db, newRecord(pet.id));
