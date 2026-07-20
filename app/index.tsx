@@ -55,26 +55,41 @@ export default function PetListScreen() {
     router.push('/pet/new');
   };
 
-  const renderPet = ({ item }: { item: Pet }) => (
-    <Pressable
-      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
-      onPress={() => router.push(`/pet/${item.id}`)}
-    >
-      <View style={[styles.avatar, { backgroundColor: speciesTint(item.species) }]}>
-        <Text style={styles.avatarText}>{initialOf(item.name)}</Text>
-      </View>
-      <View style={styles.rowBody}>
-        <View style={styles.petNameRow}>
-          <Text style={styles.petName}>{item.name}</Text>
-          {dirtyMap[item.id] && <View style={styles.unsyncedDot} />}
+  const renderPet = ({ item }: { item: Pet }) => {
+    // Tombstoned locally but not yet synced (MIN-46 keeps these in listPets
+    // on purpose so this state is visible instead of the row just vanishing
+    // before the delete has actually reached Supabase).
+    const isPendingDelete = !!item.deletedAt;
+    return (
+      <Pressable
+        style={({ pressed }) => [
+          styles.row,
+          pressed && !isPendingDelete && styles.rowPressed,
+          isPendingDelete && styles.rowPendingDelete,
+        ]}
+        onPress={() => { if (!isPendingDelete) router.push(`/pet/${item.id}`); }}
+        disabled={isPendingDelete}
+      >
+        <View style={[styles.avatar, { backgroundColor: speciesTint(item.species) }]}>
+          <Text style={styles.avatarText}>{initialOf(item.name)}</Text>
         </View>
-        <Text style={styles.petMeta}>
-          {item.species}{ageStr(item.birthdate) ? ` · ${ageStr(item.birthdate)}` : ''}
-        </Text>
-      </View>
-      <Text style={styles.chevron}>›</Text>
-    </Pressable>
-  );
+        <View style={styles.rowBody}>
+          <View style={styles.petNameRow}>
+            <Text style={styles.petName}>{item.name}</Text>
+            {!isPendingDelete && dirtyMap[item.id] && <View style={styles.unsyncedDot} />}
+          </View>
+          {isPendingDelete ? (
+            <Text style={styles.pendingDeleteLabel}>Deleting… (not synced yet)</Text>
+          ) : (
+            <Text style={styles.petMeta}>
+              {item.species}{ageStr(item.birthdate) ? ` · ${ageStr(item.birthdate)}` : ''}
+            </Text>
+          )}
+        </View>
+        {!isPendingDelete && <Text style={styles.chevron}>›</Text>}
+      </Pressable>
+    );
+  };
 
   if (!onboardingChecked) return null;
 
@@ -168,6 +183,9 @@ const styles = StyleSheet.create({
   rowPressed: {
     opacity: 0.7,
   },
+  rowPendingDelete: {
+    opacity: 0.45,
+  },
   avatar: {
     width: 48,
     height: 48,
@@ -203,6 +221,11 @@ const styles = StyleSheet.create({
   petMeta: {
     fontSize: 13,
     color: colors.textSecondary,
+    marginTop: 2,
+  },
+  pendingDeleteLabel: {
+    fontSize: 13,
+    color: colors.danger,
     marginTop: 2,
   },
   chevron: {
