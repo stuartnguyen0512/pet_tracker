@@ -46,6 +46,11 @@ export default function SettingsScreen() {
     try {
       await logOut();
       await wipeAllLocal();
+      // dismissTo before showToast, not after — Settings is a modal, and a
+      // toast fired while still inside it is invisible (same root cause as
+      // MIN-43's login/signup toasts). Leaving the modal first means the
+      // toast renders over the now-visible home screen instead.
+      router.dismissTo('/');
       showToast('Logged out');
     } catch (e) {
       console.error('[Settings] sign out failed:', e);
