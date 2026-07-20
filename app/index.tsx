@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
   },
   iconButtonText: {
-    fontSize: 16,
+    fontSize: 22,
     color: colors.textSecondary,
   },
   list: {
