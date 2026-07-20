@@ -216,15 +216,15 @@ export async function hasDirtyData(db: SQLiteDatabase): Promise<boolean> {
 }
 
 // Hard delete, not a tombstone — this is a genuine local wipe, nothing to
-// propagate. Also clears the sync cursor ('last_synced_at', written by
-// lib/sync.ts) so the next login does a full pull instead of an incremental
-// one, since an incremental pull against an empty local DB would only
-// restore rows changed since the last sync rather than everything the
-// account owns.
+// propagate. Also clears the sync cursor ('last_synced_at') and the
+// local-owner marker ('local_owner_id', both written by lib/sync.ts) so the
+// next login does a full pull instead of an incremental one, and so the
+// owner-mismatch guard in runSync doesn't think there's still someone to
+// compare against.
 export async function wipeLocalData(db: SQLiteDatabase): Promise<void> {
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM records');
     await db.runAsync('DELETE FROM pets');
-    await db.runAsync("DELETE FROM settings WHERE key = 'last_synced_at'");
+    await db.runAsync("DELETE FROM settings WHERE key IN ('last_synced_at', 'local_owner_id')");
   });
 }

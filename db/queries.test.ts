@@ -245,4 +245,10 @@ describe('account switch / logout data lifecycle', () => {
     await Q.wipeLocalData(db);
     expect(await Q.getSetting(db, 'last_synced_at')).toBeNull();
   });
+
+  it('wipeLocalData clears the local-owner marker so the mismatch guard treats the device as unclaimed', async () => {
+    await Q.setSetting(db, 'local_owner_id', 'user-123');
+    await Q.wipeLocalData(db);
+    expect(await Q.getSetting(db, 'local_owner_id')).toBeNull();
+  });
 });
