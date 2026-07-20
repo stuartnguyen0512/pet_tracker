@@ -147,14 +147,19 @@ export default function PetProfileScreen() {
               <View style={styles.groupCard}>
                 {group.items.map((r, i) => {
                   const meta = recordTypeMeta(r.type);
+                  // Tombstoned locally but not yet synced — same carve-out
+                  // MIN-46 made in listRecordsForPet, surfaced here (MIN-48).
+                  const isPendingDelete = !!r.deletedAt;
                   return (
                     <Pressable
                       key={r.id}
                       style={[
                         styles.recordRow,
                         i !== group.items.length - 1 && styles.recordRowDivider,
+                        isPendingDelete && styles.recordRowPendingDelete,
                       ]}
-                      onPress={() => router.push(`/pet/${pet.id}/record/${r.id}`)}
+                      onPress={() => { if (!isPendingDelete) router.push(`/pet/${pet.id}/record/${r.id}`); }}
+                      disabled={isPendingDelete}
                     >
                       <View style={[styles.recordIcon, { backgroundColor: meta.tint }]}>
                         <Text style={styles.recordEmoji}>{meta.emoji}</Text>
@@ -164,14 +169,18 @@ export default function PetProfileScreen() {
                           <Text style={[styles.recordType, { color: meta.ic }]}>
                             {meta.label.toUpperCase()}
                           </Text>
-                          {r.dirty && <View style={styles.unsyncedDot} />}
+                          {!isPendingDelete && r.dirty && <View style={styles.unsyncedDot} />}
                         </View>
-                        <Text style={styles.recordDetail} numberOfLines={1}>
-                          {r.details || meta.label}
-                        </Text>
+                        {isPendingDelete ? (
+                          <Text style={styles.pendingDeleteLabel}>Deleting… (not synced yet)</Text>
+                        ) : (
+                          <Text style={styles.recordDetail} numberOfLines={1}>
+                            {r.details || meta.label}
+                          </Text>
+                        )}
                       </View>
-                      {r.photo && <View style={styles.photoThumb} />}
-                      <Text style={styles.recordDate}>{shortDate(r.date)}</Text>
+                      {!isPendingDelete && r.photo && <View style={styles.photoThumb} />}
+                      {!isPendingDelete && <Text style={styles.recordDate}>{shortDate(r.date)}</Text>}
                     </Pressable>
                   );
                 })}
@@ -324,6 +333,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0.5,
     borderBottomColor: '#EEF0F2',
   },
+  recordRowPendingDelete: {
+    opacity: 0.45,
+  },
   recordIcon: {
     width: 36,
     height: 36,
@@ -358,6 +370,11 @@ const styles = StyleSheet.create({
   recordDetail: {
     fontSize: 16,
     color: colors.text,
+    marginTop: 2,
+  },
+  pendingDeleteLabel: {
+    fontSize: 13,
+    color: colors.danger,
     marginTop: 2,
   },
   photoThumb: {
