@@ -261,3 +261,42 @@ describe('runSync — cursor', () => {
     expect(mockGt).toHaveBeenCalledWith('updated_at', firstCursor);
   });
 });
+
+describe('runSync — owner mismatch guard', () => {
+  const OTHER_USER_ID = 'user-456';
+
+  it('wipes local data before pushing when syncing under a different account than last time', async () => {
+    const pet = await Q.createPet(db, newPet({ name: 'Old Owner Pet' }));
+    await runSync(db, USER_ID); // establishes local_owner_id = USER_ID, pushes + clears dirty
+
+    // Simulate switching accounts directly from the login screen without an
+    // explicit logout first — the same local pet is still here and gets
+    // edited (dirty again) before the switch.
+    await db.runAsync('UPDATE pets SET dirty = 1 WHERE id = ?', [pet.id]);
+    mockPetsUpsert.mockClear();
+
+    await runSync(db, OTHER_USER_ID);
+
+    // Must never have tried to push the previous owner's row under the new
+    // account — the guard should wipe it before push even looks for dirty rows.
+    expect(mockPetsUpsert).not.toHaveBeenCalled();
+    expect(await Q.listPets(db)).toEqual([]);
+  });
+
+  it('does not wipe when syncing again under the same account', async () => {
+    const pet = await Q.createPet(db, newPet());
+    await runSync(db, USER_ID);
+    await runSync(db, USER_ID);
+    expect(await Q.listPets(db)).toEqual([
+      { id: pet.id, name: 'Milo', species: 'Dog', photo: null, birthdate: null },
+    ]);
+  });
+
+  it('does not wipe on the very first sync ever (no prior owner recorded)', async () => {
+    const pet = await Q.createPet(db, newPet());
+    await runSync(db, USER_ID);
+    expect(await Q.listPets(db)).toEqual([
+      { id: pet.id, name: 'Milo', species: 'Dog', photo: null, birthdate: null },
+    ]);
+  });
+});

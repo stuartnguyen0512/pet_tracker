@@ -1,8 +1,9 @@
 import { SQLiteDatabase } from 'expo-sqlite';
 import { supabase } from './supabaseClient';
-import { getSetting, setSetting } from '../db/queries';
+import { getSetting, setSetting, wipeLocalData } from '../db/queries';
 
 const LAST_SYNCED_AT_KEY = 'last_synced_at';
+const LOCAL_OWNER_ID_KEY = 'local_owner_id';
 const EPOCH = '1970-01-01T00:00:00.000Z';
 
 type DirtyPetRow = {
@@ -160,6 +161,21 @@ async function mergeRecords(db: SQLiteDatabase, remoteRows: RemoteRecordRow[]): 
 // ---------------------------------------------------------------------------
 
 export async function runSync(db: SQLiteDatabase, userId: string): Promise<void> {
+  // Local data can only ever belong to one account (personal-only accounts,
+  // no sharing). Settings' logout flow wipes it, but that's not the only way
+  // a device switches accounts — signing into a different account directly
+  // from the login screen, over an existing session, never routes through
+  // that logout wipe. Without this check, pushDirtyPets/pushDirtyRecords
+  // below would try to upsert the previous owner's rows under this userId
+  // and Supabase RLS (owner_id = auth.uid()) rejects it outright (42501).
+  // So: whoever synced last is compared against who's syncing now, and any
+  // mismatch wipes first, exactly like an explicit logout would have.
+  const localOwnerId = await getSetting(db, LOCAL_OWNER_ID_KEY);
+  if (localOwnerId && localOwnerId !== userId) {
+    await wipeLocalData(db);
+  }
+  await setSetting(db, LOCAL_OWNER_ID_KEY, userId);
+
   const syncStartedAt = new Date().toISOString();
 
   await pushDirtyPets(db, userId);
