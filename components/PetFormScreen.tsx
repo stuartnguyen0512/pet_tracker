@@ -3,7 +3,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
-  ActionSheetIOS,
   Image,
   Pressable,
   ScrollView,
@@ -16,6 +15,7 @@ import { colors } from '../constants/theme';
 import { fromIsoDate, toIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
 import { runSync } from '../lib/sync';
+import { useActionSheet } from '../store/actionSheet';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
@@ -43,6 +43,7 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
   const router = useRouter();
   const { createPet, updatePet, deletePet, listRecordsForPet, db, refreshPets } = usePets();
   const { showToast } = useToast();
+  const { showActionSheet } = useActionSheet();
   const { isLoggedIn, user } = useUiSession();
 
   const [name, setName] = useState(pet?.name ?? '');
@@ -54,23 +55,28 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
   const canSave = name.trim().length > 0;
 
   const onChangePhoto = () => {
-    const options = photo
-      ? ['Take Photo', 'Choose from Library', 'Remove Photo', 'Cancel']
-      : ['Take Photo', 'Choose from Library', 'Cancel'];
-    const cancelButtonIndex = options.length - 1;
-    const destructiveButtonIndex = photo ? 2 : undefined;
-
-    ActionSheetIOS.showActionSheetWithOptions(
-      { options, cancelButtonIndex, destructiveButtonIndex },
-      async buttonIndex => {
-        if (buttonIndex === 0 || buttonIndex === 1) {
-          const uri = await pickImage(buttonIndex === 0 ? 'camera' : 'library');
-          if (uri) setPhoto(uri);
-        } else if (photo && buttonIndex === 2) {
-          setPhoto(null);
-        }
-      },
-    );
+    showActionSheet({
+      options: [
+        {
+          label: 'Take Photo',
+          onPress: async () => {
+            const uri = await pickImage('camera');
+            if (uri) setPhoto(uri);
+          },
+        },
+        {
+          label: 'Choose from Library',
+          onPress: async () => {
+            const uri = await pickImage('library');
+            if (uri) setPhoto(uri);
+          },
+        },
+        ...(photo
+          ? [{ label: 'Remove Photo', style: 'destructive' as const, onPress: () => setPhoto(null) }]
+          : []),
+        { label: 'Cancel', style: 'cancel' as const, onPress: () => {} },
+      ],
+    });
   };
 
   const onSave = async () => {
@@ -99,25 +105,25 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
       // dirty row same as any other; asking every time would get old fast.
       // A brand new pet is the one moment worth interrupting for.
       if (isLoggedIn && user) {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            message: 'Sync this pet to your account now?',
-            options: ['Sync Now', 'Not Now'],
-            cancelButtonIndex: 1,
-          },
-          async buttonIndex => {
-            if (buttonIndex === 0) {
-              try {
-                await runSync(db, user.id);
-                await refreshPets();
-              } catch (e) {
-                console.error('[PetFormScreen] sync failed:', e);
-                showToast('Sync failed — you can retry from Settings');
-              }
-            }
-            router.back();
-          },
-        );
+        showActionSheet({
+          message: 'Sync this pet to your account now?',
+          options: [
+            {
+              label: 'Sync Now',
+              onPress: async () => {
+                try {
+                  await runSync(db, user.id);
+                  await refreshPets();
+                } catch (e) {
+                  console.error('[PetFormScreen] sync failed:', e);
+                  showToast('Sync failed — you can retry from Settings');
+                }
+                router.back();
+              },
+            },
+            { label: 'Not Now', style: 'cancel', onPress: () => router.back() },
+          ],
+        });
       } else {
         router.back();
       }
@@ -129,29 +135,29 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
 
   const onDelete = () => {
     if (!pet) return;
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        message: `Delete ${pet.name}? This also removes all their records. This can't be undone.`,
-        options: ['Delete Pet', 'Cancel'],
-        destructiveButtonIndex: 0,
-        cancelButtonIndex: 1,
-      },
-      async buttonIndex => {
-        if (buttonIndex === 0) {
-          try {
-            const records = await listRecordsForPet(pet.id);
-            records.forEach(r => deletePhotoIfExists(r.photo));
-            deletePhotoIfExists(pet.photo);
-            await deletePet(pet.id);
-            showToast(`${pet.name} deleted`);
-            router.dismissTo('/');
-          } catch (e) {
-            console.error('[PetFormScreen] delete failed:', e);
-            showToast('Could not delete — please try again');
-          }
-        }
-      },
-    );
+    showActionSheet({
+      message: `Delete ${pet.name}? This also removes all their records. This can't be undone.`,
+      options: [
+        {
+          label: 'Delete Pet',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const records = await listRecordsForPet(pet.id);
+              records.forEach(r => deletePhotoIfExists(r.photo));
+              deletePhotoIfExists(pet.photo);
+              await deletePet(pet.id);
+              showToast(`${pet.name} deleted`);
+              router.dismissTo('/');
+            } catch (e) {
+              console.error('[PetFormScreen] delete failed:', e);
+              showToast('Could not delete — please try again');
+            }
+          },
+        },
+        { label: 'Cancel', style: 'cancel', onPress: () => {} },
+      ],
+    });
   };
 
   return (

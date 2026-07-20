@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../../constants/theme';
@@ -7,6 +7,7 @@ import { RECORD_TYPES, recordTypeMeta } from '../../../constants/recordTypes';
 import { ageStr, monthLabel, shortDate } from '../../../lib/dates';
 import { exportJson } from '../../../lib/export';
 import { initialOf, speciesTint } from '../../../lib/petDisplay';
+import { useActionSheet } from '../../../store/actionSheet';
 import { usePets } from '../../../store/pets';
 import { useToast } from '../../../store/toast';
 import { HealthRecord, RecordType } from '../../../types';
@@ -23,6 +24,7 @@ export default function PetProfileScreen() {
   const router = useRouter();
   const { pets, listRecordsForPet } = usePets();
   const { showToast } = useToast();
+  const { showActionSheet } = useActionSheet();
   const [records, setRecords] = useState<HealthRecord[]>([]);
   const [recordsLoaded, setRecordsLoaded] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('All');
@@ -57,21 +59,20 @@ export default function PetProfileScreen() {
   }
 
   const onOpenMenu = () => {
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        options: ['Edit Pet', `Export ${pet.name}'s records`, 'Cancel'],
-        cancelButtonIndex: 2,
-      },
-      async buttonIndex => {
-        if (buttonIndex === 0) {
-          router.push(`/pet/${pet.id}/edit`);
-        } else if (buttonIndex === 1) {
-          showToast('Preparing…');
-          const ok = await exportJson(`${pet.name.toLowerCase()}-records`, { pet, records });
-          showToast(ok ? 'Export ready' : 'Sharing unavailable');
-        }
-      },
-    );
+    showActionSheet({
+      options: [
+        { label: 'Edit Pet', onPress: () => router.push(`/pet/${pet.id}/edit`) },
+        {
+          label: `Export ${pet.name}'s records`,
+          onPress: async () => {
+            showToast('Preparing…');
+            const ok = await exportJson(`${pet.name.toLowerCase()}-records`, { pet, records });
+            showToast(ok ? 'Export ready' : 'Sharing unavailable');
+          },
+        },
+        { label: 'Cancel', style: 'cancel', onPress: () => {} },
+      ],
+    });
   };
 
   const filters: FilterKey[] = ['All', ...RECORD_TYPES.map(t => t.type)];

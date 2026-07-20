@@ -1,11 +1,12 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActionSheetIOS, ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/theme';
 import * as Q from '../db/queries';
 import { exportJson } from '../lib/export';
 import { initialOf } from '../lib/petDisplay';
 import { runSync } from '../lib/sync';
+import { useActionSheet } from '../store/actionSheet';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
@@ -16,6 +17,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { pets, listRecordsForPet, db, refreshPets, wipeAllLocal } = usePets();
   const { showToast } = useToast();
+  const { showActionSheet } = useActionSheet();
   const { isLoggedIn, isInitializing, logOut, user } = useUiSession();
 
   // Settings is presented as a modal (see app/_layout.tsx) — on iOS a native
@@ -68,17 +70,13 @@ export default function SettingsScreen() {
       await performLogout();
       return;
     }
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        message: "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it.",
-        options: ['Log Out', 'Cancel'],
-        destructiveButtonIndex: 0,
-        cancelButtonIndex: 1,
-      },
-      buttonIndex => {
-        if (buttonIndex === 0) performLogout();
-      },
-    );
+    showActionSheet({
+      message: "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it.",
+      options: [
+        { label: 'Log Out', style: 'destructive', onPress: performLogout },
+        { label: 'Cancel', style: 'cancel', onPress: () => {} },
+      ],
+    });
   };
 
   const onSyncNow = async () => {

@@ -3,7 +3,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
-  ActionSheetIOS,
   Image,
   Pressable,
   ScrollView,
@@ -16,6 +15,7 @@ import { colors } from '../constants/theme';
 import { RECORD_TYPES, recordTypeMeta } from '../constants/recordTypes';
 import { fromIsoDate, toIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
+import { useActionSheet } from '../store/actionSheet';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { HealthRecord, RecordType } from '../types';
@@ -45,6 +45,7 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
   const router = useRouter();
   const { createRecord, updateRecord, deleteRecord } = usePets();
   const { showToast } = useToast();
+  const { showActionSheet } = useActionSheet();
 
   const initialWeight = record?.type === 'Weight' ? splitWeightDetails(record.details) : { value: '', unit: 'kg' as const };
 
@@ -60,23 +61,28 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
   const canSave = !isWeight || weightValue.trim().length > 0;
 
   const onChangePhoto = () => {
-    const options = photo
-      ? ['Take Photo', 'Choose from Library', 'Remove Photo', 'Cancel']
-      : ['Take Photo', 'Choose from Library', 'Cancel'];
-    const cancelButtonIndex = options.length - 1;
-    const destructiveButtonIndex = photo ? 2 : undefined;
-
-    ActionSheetIOS.showActionSheetWithOptions(
-      { options, cancelButtonIndex, destructiveButtonIndex },
-      async buttonIndex => {
-        if (buttonIndex === 0 || buttonIndex === 1) {
-          const uri = await pickImage(buttonIndex === 0 ? 'camera' : 'library');
-          if (uri) setPhoto(uri);
-        } else if (photo && buttonIndex === 2) {
-          setPhoto(null);
-        }
-      },
-    );
+    showActionSheet({
+      options: [
+        {
+          label: 'Take Photo',
+          onPress: async () => {
+            const uri = await pickImage('camera');
+            if (uri) setPhoto(uri);
+          },
+        },
+        {
+          label: 'Choose from Library',
+          onPress: async () => {
+            const uri = await pickImage('library');
+            if (uri) setPhoto(uri);
+          },
+        },
+        ...(photo
+          ? [{ label: 'Remove Photo', style: 'destructive' as const, onPress: () => setPhoto(null) }]
+          : []),
+        { label: 'Cancel', style: 'cancel' as const, onPress: () => {} },
+      ],
+    });
   };
 
   const onSave = async () => {
@@ -108,27 +114,27 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
 
   const onDelete = () => {
     if (!record) return;
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        message: "Delete this record? This can't be undone.",
-        options: ['Delete Record', 'Cancel'],
-        destructiveButtonIndex: 0,
-        cancelButtonIndex: 1,
-      },
-      async buttonIndex => {
-        if (buttonIndex === 0) {
-          try {
-            await deleteRecord(record.id);
-            if (record.photo) deletePhotoIfExists(record.photo);
-            router.back();
-            showToast('Record deleted');
-          } catch (e) {
-            console.error('[RecordFormScreen] delete failed:', e);
-            showToast('Could not delete — please try again');
-          }
-        }
-      },
-    );
+    showActionSheet({
+      message: "Delete this record? This can't be undone.",
+      options: [
+        {
+          label: 'Delete Record',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteRecord(record.id);
+              if (record.photo) deletePhotoIfExists(record.photo);
+              router.back();
+              showToast('Record deleted');
+            } catch (e) {
+              console.error('[RecordFormScreen] delete failed:', e);
+              showToast('Could not delete — please try again');
+            }
+          },
+        },
+        { label: 'Cancel', style: 'cancel', onPress: () => {} },
+      ],
+    });
   };
 
   const meta = recordTypeMeta(type);
