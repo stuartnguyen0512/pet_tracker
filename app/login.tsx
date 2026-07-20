@@ -25,17 +25,34 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
+  // Login is a `presentation: 'modal'` screen — on iOS a native modal renders
+  // above everything including the root-mounted Toast overlay, so a toast
+  // fired from in here (same bug as Settings' Sync Now) is invisible. Errors
+  // that leave the user still looking at this screen need in-component state
+  // instead; sync-failure toasts below are fine since they fire right before
+  // dismissTo('/') takes the user off this screen entirely.
+  const [errorText, setErrorText] = useState<string | null>(null);
   const isSubmitting = phase !== 'idle';
 
   const canSubmit = email.trim().length > 0 && password.length > 0 && !isSubmitting;
 
+  const onChangeEmail = (text: string) => {
+    setEmail(text);
+    setErrorText(null);
+  };
+  const onChangePassword = (text: string) => {
+    setPassword(text);
+    setErrorText(null);
+  };
+
   const onLogIn = async () => {
     if (!canSubmit) return;
+    setErrorText(null);
     setPhase('authenticating');
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (error) {
-        showToast('Invalid email or password');
+        setErrorText('Invalid email or password');
         return;
       }
       // Force a sync right after login, before the user ever sees the app in
@@ -55,7 +72,7 @@ export default function LoginScreen() {
       router.dismissTo('/');
     } catch (e) {
       console.error('[Login] sign in failed:', e);
-      showToast('Could not log in — please try again');
+      setErrorText('Could not log in — please try again');
     } finally {
       setPhase('idle');
     }
@@ -85,7 +102,7 @@ export default function LoginScreen() {
             <Text style={styles.fieldLabel}>EMAIL</Text>
             <TextInput
               value={email}
-              onChangeText={setEmail}
+              onChangeText={onChangeEmail}
               placeholder="you@example.com"
               style={styles.input}
               placeholderTextColor={colors.textFaint}
@@ -100,7 +117,7 @@ export default function LoginScreen() {
             <Text style={styles.fieldLabel}>PASSWORD</Text>
             <TextInput
               value={password}
-              onChangeText={setPassword}
+              onChangeText={onChangePassword}
               placeholder="••••••••"
               style={styles.input}
               placeholderTextColor={colors.textFaint}
@@ -109,6 +126,7 @@ export default function LoginScreen() {
             />
           </View>
         </View>
+        {errorText && <Text style={styles.errorText}>{errorText}</Text>}
 
         <Pressable
           style={[styles.primaryButton, !canSubmit && styles.primaryButtonDisabled]}
@@ -205,6 +223,12 @@ const styles = StyleSheet.create({
     height: 0.5,
     backgroundColor: colors.border,
     marginLeft: 14,
+  },
+  errorText: {
+    fontSize: 13,
+    color: colors.danger,
+    marginTop: 8,
+    paddingHorizontal: 4,
   },
   primaryButton: {
     height: 52,

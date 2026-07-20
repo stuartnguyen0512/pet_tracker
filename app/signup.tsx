@@ -26,19 +26,37 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
+  // Signup is a `presentation: 'modal'` screen — same invisible-toast issue
+  // as Settings' Sync Now and Login. Errors that leave the user still
+  // looking at this screen need in-component state instead of a toast.
+  const [errorText, setErrorText] = useState<string | null>(null);
   const isSubmitting = phase !== 'idle';
 
   const passwordsMatch = password.length > 0 && password === confirmPassword;
   const canSubmit =
     email.trim().length > 0 && password.length > 0 && passwordsMatch && !isSubmitting;
 
+  const onChangeEmail = (text: string) => {
+    setEmail(text);
+    setErrorText(null);
+  };
+  const onChangePassword = (text: string) => {
+    setPassword(text);
+    setErrorText(null);
+  };
+  const onChangeConfirmPassword = (text: string) => {
+    setConfirmPassword(text);
+    setErrorText(null);
+  };
+
   const onCreateAccount = async () => {
     if (!canSubmit) return;
+    setErrorText(null);
     setPhase('authenticating');
     try {
       const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
       if (error) {
-        showToast(error.message);
+        setErrorText(error.message);
         return;
       }
       if (data.session && data.user) {
@@ -62,7 +80,7 @@ export default function SignupScreen() {
       }
     } catch (e) {
       console.error('[Signup] sign up failed:', e);
-      showToast('Could not create account — please try again');
+      setErrorText('Could not create account — please try again');
     } finally {
       setPhase('idle');
     }
@@ -92,7 +110,7 @@ export default function SignupScreen() {
             <Text style={styles.fieldLabel}>EMAIL</Text>
             <TextInput
               value={email}
-              onChangeText={setEmail}
+              onChangeText={onChangeEmail}
               placeholder="you@example.com"
               style={styles.input}
               placeholderTextColor={colors.textFaint}
@@ -107,7 +125,7 @@ export default function SignupScreen() {
             <Text style={styles.fieldLabel}>PASSWORD</Text>
             <TextInput
               value={password}
-              onChangeText={setPassword}
+              onChangeText={onChangePassword}
               placeholder="••••••••"
               style={styles.input}
               placeholderTextColor={colors.textFaint}
@@ -120,7 +138,7 @@ export default function SignupScreen() {
             <Text style={styles.fieldLabel}>CONFIRM PASSWORD</Text>
             <TextInput
               value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              onChangeText={onChangeConfirmPassword}
               placeholder="••••••••"
               style={styles.input}
               placeholderTextColor={colors.textFaint}
@@ -129,6 +147,7 @@ export default function SignupScreen() {
             />
           </View>
         </View>
+        {errorText && <Text style={styles.errorText}>{errorText}</Text>}
         {confirmPassword.length > 0 && !passwordsMatch && (
           <Text style={styles.errorText}>Passwords don't match</Text>
         )}
