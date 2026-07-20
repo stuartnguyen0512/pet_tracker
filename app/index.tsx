@@ -1,8 +1,9 @@
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../constants/theme';
+import * as Q from '../db/queries';
 import { ageStr } from '../lib/dates';
 import { hasSeenOnboarding } from '../lib/onboarding';
 import { initialOf, speciesTint } from '../lib/petDisplay';
@@ -11,8 +12,27 @@ import { Pet } from '../types';
 
 export default function PetListScreen() {
   const router = useRouter();
-  const { pets } = usePets();
+  const { pets, db } = usePets();
   const [onboardingChecked, setOnboardingChecked] = useState(false);
+
+  // Keyed by pet id: true if the pet itself or any of its records has
+  // unsynced changes. Recomputed on focus rather than held as derived state,
+  // since a record's dirty flag lives in SQLite, not in this screen's data —
+  // deliberately a cheap COUNT-style check (hasUnsyncedRecordsForPet), not a
+  // full record load, to keep the "records aren't held globally" state split.
+  const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({});
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      Promise.all(
+        pets.map(async p => [p.id, p.dirty || (await Q.hasUnsyncedRecordsForPet(db, p.id))] as const),
+      ).then(entries => {
+        if (active) setDirtyMap(Object.fromEntries(entries));
+      });
+      return () => { active = false; };
+    }, [pets, db]),
+  );
 
   // Runs once per app launch — on a brand new install this redirects to the
   // onboarding intro before the pet list ever renders. Once seen, this check
@@ -44,7 +64,10 @@ export default function PetListScreen() {
         <Text style={styles.avatarText}>{initialOf(item.name)}</Text>
       </View>
       <View style={styles.rowBody}>
-        <Text style={styles.petName}>{item.name}</Text>
+        <View style={styles.petNameRow}>
+          <Text style={styles.petName}>{item.name}</Text>
+          {dirtyMap[item.id] && <View style={styles.unsyncedDot} />}
+        </View>
         <Text style={styles.petMeta}>
           {item.species}{ageStr(item.birthdate) ? ` · ${ageStr(item.birthdate)}` : ''}
         </Text>
@@ -161,10 +184,21 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  petNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   petName: {
     fontSize: 17,
     fontWeight: '600',
     color: colors.text,
+  },
+  unsyncedDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.accent,
   },
   petMeta: {
     fontSize: 13,

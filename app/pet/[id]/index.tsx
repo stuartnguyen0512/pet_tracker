@@ -160,9 +160,12 @@ export default function PetProfileScreen() {
                         <Text style={styles.recordEmoji}>{meta.emoji}</Text>
                       </View>
                       <View style={styles.recordBody}>
-                        <Text style={[styles.recordType, { color: meta.ic }]}>
-                          {meta.label.toUpperCase()}
-                        </Text>
+                        <View style={styles.recordTypeRow}>
+                          <Text style={[styles.recordType, { color: meta.ic }]}>
+                            {meta.label.toUpperCase()}
+                          </Text>
+                          {r.dirty && <View style={styles.unsyncedDot} />}
+                        </View>
                         <Text style={styles.recordDetail} numberOfLines={1}>
                           {r.details || meta.label}
                         </Text>
@@ -335,11 +338,22 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  recordTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   recordType: {
     fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+  },
+  unsyncedDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: colors.accent,
   },
   recordDetail: {
     fontSize: 16,
