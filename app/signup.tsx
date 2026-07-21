@@ -74,11 +74,19 @@ export default function SignupScreen() {
         );
         return;
       }
+      // Supabase's anti-enumeration behavior for an already-registered email:
+      // no `error`, but a synthetic user with an empty `identities` array and
+      // no session. This is the only reliable signal in that case — it never
+      // fires for a genuinely new signup, where `identities` is populated.
+      if (data.user && data.user.identities?.length === 0) {
+        setErrorText('This email is already registered — log in instead.');
+        return;
+      }
       if (data.session && data.user) {
-        // Confirmations off on this project — account is usable immediately.
-        // Force a sync right away: any pets logged anonymously before signing
-        // up are still sitting locally with dirty=1 and need pushing up as
-        // this brand-new account's first sync.
+        // Account is usable immediately (confirmations off) — force a sync
+        // right away: any pets logged anonymously before signing up are
+        // still sitting locally with dirty=1 and need pushing up as this
+        // brand-new account's first sync.
         setPhase('syncing');
         try {
           await runSync(db, data.user.id);
