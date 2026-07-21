@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/theme';
+import { isValidEmail } from '../lib/authValidation';
 import { runSync } from '../lib/sync';
 import { supabase } from '../lib/supabaseClient';
 import { usePets } from '../store/pets';
@@ -34,7 +35,8 @@ export default function LoginScreen() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const isSubmitting = phase !== 'idle';
 
-  const canSubmit = email.trim().length > 0 && password.length > 0 && !isSubmitting;
+  const emailLooksValid = email.trim().length === 0 || isValidEmail(email);
+  const canSubmit = isValidEmail(email) && password.length > 0 && !isSubmitting;
 
   const onChangeEmail = (text: string) => {
     setEmail(text);
@@ -127,6 +129,7 @@ export default function LoginScreen() {
           </View>
         </View>
         {errorText && <Text style={styles.errorText}>{errorText}</Text>}
+        {!emailLooksValid && <Text style={styles.errorText}>Enter a valid email address</Text>}
 
         <Pressable
           style={[styles.primaryButton, !canSubmit && styles.primaryButtonDisabled]}
