@@ -11,6 +11,12 @@ import {
   View,
 } from 'react-native';
 import { colors } from '../constants/theme';
+import {
+  isDuplicateEmailError,
+  isStrongPassword,
+  isValidEmail,
+  PASSWORD_REQUIREMENT_TEXT,
+} from '../lib/authValidation';
 import { runSync } from '../lib/sync';
 import { supabase } from '../lib/supabaseClient';
 import { usePets } from '../store/pets';
@@ -32,9 +38,14 @@ export default function SignupScreen() {
   const [errorText, setErrorText] = useState<string | null>(null);
   const isSubmitting = phase !== 'idle';
 
+  const emailLooksValid = email.trim().length === 0 || isValidEmail(email);
   const passwordsMatch = password.length > 0 && password === confirmPassword;
+  const passwordStrongEnough = password.length === 0 || isStrongPassword(password);
   const canSubmit =
-    email.trim().length > 0 && password.length > 0 && passwordsMatch && !isSubmitting;
+    isValidEmail(email) &&
+    isStrongPassword(password) &&
+    passwordsMatch &&
+    !isSubmitting;
 
   const onChangeEmail = (text: string) => {
     setEmail(text);
@@ -56,7 +67,11 @@ export default function SignupScreen() {
     try {
       const { data, error } = await supabase.auth.signUp({ email: email.trim(), password });
       if (error) {
-        setErrorText(error.message);
+        setErrorText(
+          isDuplicateEmailError(error.message)
+            ? 'This email is already registered — log in instead.'
+            : error.message,
+        );
         return;
       }
       if (data.session && data.user) {
@@ -148,6 +163,12 @@ export default function SignupScreen() {
           </View>
         </View>
         {errorText && <Text style={styles.errorText}>{errorText}</Text>}
+        {!emailLooksValid && <Text style={styles.errorText}>Enter a valid email address</Text>}
+        {password.length > 0 && (
+          <Text style={passwordStrongEnough ? styles.hintText : styles.errorText}>
+            {PASSWORD_REQUIREMENT_TEXT}
+          </Text>
+        )}
         {confirmPassword.length > 0 && !passwordsMatch && (
           <Text style={styles.errorText}>Passwords don't match</Text>
         )}
@@ -251,6 +272,12 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 13,
     color: colors.danger,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  hintText: {
+    fontSize: 13,
+    color: colors.textSecondary,
     marginTop: 8,
     paddingHorizontal: 4,
   },
