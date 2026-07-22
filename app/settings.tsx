@@ -74,17 +74,27 @@ export default function SettingsScreen() {
     // into the modal-inside-modal rendering problem that a component like
     // ActionSheet risks when opened from a screen that's itself presented
     // as a router-level `presentation: 'modal'` (Settings is one).
-    const dirty = await Q.hasDirtyData(db);
-    Alert.alert(
-      'Log Out',
-      dirty
-        ? "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it."
-        : "You'll need to sign in again to sync your pets and records on this device.",
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Log Out', style: 'destructive', onPress: performLogout },
-      ],
-    );
+    //
+    // try/catch here matters, not just style: MIN-55 was specifically about
+    // this row silently doing nothing with no explanation. hasDirtyData is
+    // the one part of this flow that can throw before the Alert ever shows —
+    // without a catch, that failure is invisible to the user again.
+    try {
+      const dirty = await Q.hasDirtyData(db);
+      Alert.alert(
+        'Log Out',
+        dirty
+          ? "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it."
+          : "You'll need to sign in again to sync your pets and records on this device.",
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Log Out', style: 'destructive', onPress: performLogout },
+        ],
+      );
+    } catch (e) {
+      console.error('[Settings] could not check sync state for logout:', e);
+      showToast('Something went wrong — please try again');
+    }
   };
 
   const onSyncNow = async () => {
