@@ -1,12 +1,11 @@
 import { useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/theme';
 import * as Q from '../db/queries';
 import { exportJson } from '../lib/export';
 import { initialOf } from '../lib/petDisplay';
 import { runSync } from '../lib/sync';
-import { useActionSheet } from '../store/actionSheet';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
@@ -17,7 +16,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { pets, listRecordsForPet, db, refreshPets, wipeAllLocal } = usePets();
   const { showToast } = useToast();
-  const { showActionSheet } = useActionSheet();
   const { isLoggedIn, isInitializing, logOut, user } = useUiSession();
 
   // Settings is presented as a modal (see app/_layout.tsx) — on iOS a native
@@ -65,18 +63,28 @@ export default function SettingsScreen() {
       router.push('/login');
       return;
     }
+    // Always confirm before logout, not only when there's unsynced work —
+    // logout is a destructive, irreversible local action either way (it
+    // wipes this device's local data even when everything's already synced,
+    // per the Reversibility Rule and PRD §7.7), and a bare "you got logged
+    // out" with no warning at all is surprising regardless of dirty state.
+    //
+    // Alert.alert (not the custom ActionSheet) on purpose: it's a native
+    // UIAlertController call, not a React-rendered overlay, so it can't run
+    // into the modal-inside-modal rendering problem that a component like
+    // ActionSheet risks when opened from a screen that's itself presented
+    // as a router-level `presentation: 'modal'` (Settings is one).
     const dirty = await Q.hasDirtyData(db);
-    if (!dirty) {
-      await performLogout();
-      return;
-    }
-    showActionSheet({
-      message: "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it.",
-      options: [
-        { label: 'Log Out', style: 'destructive', onPress: performLogout },
-        { label: 'Cancel', style: 'cancel', onPress: () => {} },
+    Alert.alert(
+      'Log Out',
+      dirty
+        ? "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it."
+        : "You'll need to sign in again to sync your pets and records on this device.",
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log Out', style: 'destructive', onPress: performLogout },
       ],
-    });
+    );
   };
 
   const onSyncNow = async () => {
