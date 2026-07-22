@@ -63,19 +63,23 @@ export default function SettingsScreen() {
       router.push('/login');
       return;
     }
-    const dirty = await Q.hasDirtyData(db);
-    if (!dirty) {
-      await performLogout();
-      return;
-    }
+    // Always confirm before logout, not only when there's unsynced work —
+    // logout is a destructive, irreversible local action either way (it
+    // wipes this device's local data even when everything's already synced,
+    // per the Reversibility Rule and PRD §7.7), and a bare "you got logged
+    // out" with no warning at all is surprising regardless of dirty state.
+    //
     // Alert.alert (not the custom ActionSheet) on purpose: it's a native
     // UIAlertController call, not a React-rendered overlay, so it can't run
     // into the modal-inside-modal rendering problem that a component like
     // ActionSheet risks when opened from a screen that's itself presented
     // as a router-level `presentation: 'modal'` (Settings is one).
+    const dirty = await Q.hasDirtyData(db);
     Alert.alert(
       'Log Out',
-      "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it.",
+      dirty
+        ? "You have changes that haven't been synced yet. Logging out deletes all local data on this device — sync first if you want to keep it."
+        : "You'll need to sign in again to sync your pets and records on this device.",
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Log Out', style: 'destructive', onPress: performLogout },
