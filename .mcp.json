@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "maestro": {
+      "command": "maestro",
+      "args": ["mcp", "--working-dir", "/Users/stuart/Claude/Projects/Pet Tracker"]
+    }
+  }
+}
