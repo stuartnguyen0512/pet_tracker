@@ -48,9 +48,11 @@ Branches that predated this convention (`feat/auth-integration`, `feat/auth-onbo
 
 Node.js v25 refuses to strip TypeScript types from files inside `node_modules`. This means any `expo-*` package that ships `.ts` source and is listed as a config plugin in `app.json` will crash Metro on startup. `expo-status-bar` was removed from `app.json`'s `plugins` array for this reason — do not add it back.
 
-## Architecture — current state (verified 2026-07-17)
+## Architecture — current state (verified 2026-07-17, sync/schema section re-verified 2026-07-23)
 
 Verified by walking the actual repo (file tree, `git log --all --oneline`, and reading the code directly) — this replaces the earlier "needs a verification pass" placeholder. Treat this as ground truth until the code changes again.
+
+> The 2026-07-17 pass predates commit `bd939c8` (MIN-46, 2026-07-20), which added the local `dirty`/`updated_at`/`deleted_at` columns and finished the sync engine. "Schema migrations", "Types", and "Target sync design" below were re-verified 2026-07-23 against the current code and updated accordingly — the rest of this section is still the 2026-07-17 pass.
 
 ### Data flow
 
@@ -84,13 +86,13 @@ app/index.tsx              Pet list (home) — implemented; redirects to /onboar
 
 `db/database.ts` uses `PRAGMA user_version` as the migration counter. To add a schema change: append a new integer key to the `MIGRATIONS` object — never edit an existing entry. Each migration runs inside `withTransactionAsync` so partial migrations can't persist.
 
-**Local schema is still v1-only** — only migration `1` (`pets`/`records`) and `2` (`settings`) exist. None of `updated_at` / `dirty` / `deleted_at` have been added yet. Milestone 3 (local sync scaffolding) has **not started**.
+**Local schema now has 3 migrations** — `1` (`pets`/`records`), `2` (`settings`), and `3` (MIN-46, 2026-07-20), which adds `updated_at` / `dirty` / `deleted_at` to both `pets` and `records`, mirroring the cloud shape. Milestone 3 (local sync scaffolding) is **done**.
 
 **Cloud schema exists and is further along** — `supabase/migrations/20260711202355_schema_v2_cloud_sync.sql` creates `pets` and `health_records` with `owner_id`, `updated_at`, `deleted_at`, RLS enabled, one policy per table (`owner_id = auth.uid()`). This part of milestone 1 is done. That same migration also created an `entitlements` table for the **old** one-time-unlock model (`unlocked boolean`) — this is now stale, see "Monetization constraint" below for what replaces it.
 
 ### Types
 
-`types.ts` at the project root defines `Pet`, `HealthRecord`, and `RecordType`. The TypeScript type is named `HealthRecord` (not `Record`) to avoid shadowing the built-in `Record<K,V>` utility. SQLite columns use `snake_case` (`pet_id`); the row mappers in `db/queries.ts` translate to camelCase at the boundary. Local types have no sync columns yet (see Schema migrations above).
+`types.ts` at the project root defines `Pet`, `HealthRecord`, and `RecordType`. The TypeScript type is named `HealthRecord` (not `Record`) to avoid shadowing the built-in `Record<K,V>` utility. SQLite columns use `snake_case` (`pet_id`); the row mappers in `db/queries.ts` translate to camelCase at the boundary. Since MIN-46, both `Pet` and `HealthRecord` also carry `dirty: boolean` and `deletedAt: string | null` (see Schema migrations above) — deliberately exposed to the UI, not just internal to `db/database.ts`/`lib/sync.ts`, because the unsynced-changes badge and pending-delete dimming on the home screen need them. `PetInput`/`HealthRecordInput` omit `id`/`dirty`/`deletedAt` since form screens never set sync metadata directly — `db/queries.ts` always stamps `dirty = 1` on write.
 
 ### Photos
 
@@ -132,7 +134,7 @@ iOS is the only real build target per the PRD title. `integration/web-platform-s
 
 ## Planned / in-progress: cloud sync
 
-The project is migrating to per-user accounts and cross-device sync via Supabase, per `PRD.md` (v2.1). Auth (email/password only), the Supabase data layer, and onboarding UI have merged into `main` — see "Architecture — current state" above for exactly what that means in practice. Confirmed still outstanding: local sync scaffolding + push/pull engine (milestone 3), wiring "Sync Now" to real logic (milestone 4), photo sync (milestone 5), Sign in with Apple, and the RevenueCat/subscription work (milestone 8).
+The project is migrating to per-user accounts and cross-device sync via Supabase, per `PRD.md` (v2.1). Auth (email/password only), the Supabase data layer, onboarding UI, local sync scaffolding + push/pull engine (milestone 3, MIN-46), and wiring "Sync Now" to real logic (milestone 4) have all merged into `main` — see "Architecture — current state" above for exactly what that means in practice. Confirmed still outstanding: photo sync (milestone 5), Sign in with Apple, and the RevenueCat/subscription work (milestone 8).
 
 ### Key decisions (already made, do not re-litigate without asking Min)
 
@@ -157,9 +159,18 @@ The project is migrating to per-user accounts and cross-device sync via Supabase
 
 Row-level security: every table gets one policy, `owner_id = auth.uid()`. No sharing policies — personal-only scope. **Confirmed in place** (`supabase/migrations/20260711202355_schema_v2_cloud_sync.sql`).
 
-### Target sync design
+### Sync design (done, milestones 3 & 4 — re-verified 2026-07-23)
 
-Local schema needs `updated_at` / `dirty` / `deleted` columns (added via new migration entries, per Schema migrations above) mirroring the cloud shape — **not yet added.** Every local write should set `dirty = 1` and bump `updated_at`. "Sync Now" should, in order: push all dirty local rows to Supabase (upsert, last-write-wins by comparing `updated_at`), pull remote rows changed since the last sync cursor, merge into local SQLite (again last-write-wins), clear dirty flags. Deletes are tombstoned locally too, so they propagate the same way as edits rather than needing special-case handling. None of this exists yet — the "Sync Now" button in `app/settings.tsx` is UI-only (see Architecture above).
+`lib/sync.ts`'s `runSync(db, userId)` implements exactly the design this section used to describe as a future target — it's no longer aspirational:
+
+- Local `pets`/`records` carry `updated_at` / `dirty` / `deleted_at` (migration 3, MIN-46). Every local write sets `dirty = 1` and bumps `updated_at` (`db/queries.ts`).
+- **Account-switch guard, first.** Before anything else, `runSync` compares a stored `local_owner_id` setting against the `userId` calling it; on a mismatch it wipes local data before pushing. This is the fix for the `42501` RLS bug described under "Sync is manual" below — it closes the gap for *any* path that changes which account owns local data, not just logout.
+- **Push.** All `dirty = 1` rows in `pets` and `records` are upserted to Supabase (`onConflict: 'id'`), then their local `dirty` flag is cleared.
+- **Pull + merge.** Rows from `pets`/`health_records` with `updated_at` greater than the stored `last_synced_at` cursor are fetched and merged into local SQLite — insert if the local row doesn't exist, otherwise last-write-wins by comparing `updated_at` as actual instants (not raw string comparison, since local/remote timestamp formats differ).
+- **Deletes** are tombstones (`deleted_at`) on both sides, so they propagate through the same push/pull path as edits — no special-case delete sync.
+- The cursor (`last_synced_at` setting) only advances after a successful push+pull+merge.
+
+Not yet done: this is silent last-write-wins with no conflict UI (matches the "Target 'Sync Now' UI and conflict handling" decision below), and sync errors aren't classified — see the "generic sync-failed copy" known gap in the QA walkthrough. Photo sync (Supabase Storage) is still entirely unbuilt — see "Target photo sync" below.
 
 ### Target auth
 
