@@ -3,6 +3,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -15,7 +16,6 @@ import { colors } from '../constants/theme';
 import { fromIsoDate, toIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
 import { runSync } from '../lib/sync';
-import { useActionSheet } from '../store/actionSheet';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
@@ -43,7 +43,6 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
   const router = useRouter();
   const { createPet, updatePet, deletePet, listRecordsForPet, db, refreshPets } = usePets();
   const { showToast } = useToast();
-  const { showActionSheet } = useActionSheet();
   const { isLoggedIn, user } = useUiSession();
 
   const [name, setName] = useState(pet?.name ?? '');
@@ -55,28 +54,33 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
   const canSave = name.trim().length > 0;
 
   const onChangePhoto = () => {
-    showActionSheet({
-      options: [
-        {
-          label: 'Take Photo',
-          onPress: async () => {
-            const uri = await pickImage('camera');
-            if (uri) setPhoto(uri);
-          },
+    // Alert.alert, not the custom ActionSheet — this screen is itself a
+    // router-level `presentation: 'modal'` (pet/new, pet/[id]/edit), and RN's
+    // Modal (which ActionSheet uses) fails to present nested inside a screen
+    // that's already shown as a native modal. Alert.alert is a native
+    // UIAlertController call, not a React-rendered overlay, so it doesn't hit
+    // that modal-inside-modal problem — same reasoning as Settings' logout
+    // confirmation.
+    Alert.alert('Add Photo', undefined, [
+      {
+        text: 'Take Photo',
+        onPress: async () => {
+          const uri = await pickImage('camera');
+          if (uri) setPhoto(uri);
         },
-        {
-          label: 'Choose from Library',
-          onPress: async () => {
-            const uri = await pickImage('library');
-            if (uri) setPhoto(uri);
-          },
+      },
+      {
+        text: 'Choose from Library',
+        onPress: async () => {
+          const uri = await pickImage('library');
+          if (uri) setPhoto(uri);
         },
-        ...(photo
-          ? [{ label: 'Remove Photo', style: 'destructive' as const, onPress: () => setPhoto(null) }]
-          : []),
-        { label: 'Cancel', style: 'cancel' as const, onPress: () => {} },
-      ],
-    });
+      },
+      ...(photo
+        ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setPhoto(null) }]
+        : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
   };
 
   const onSave = async () => {
@@ -105,25 +109,24 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
       // dirty row same as any other; asking every time would get old fast.
       // A brand new pet is the one moment worth interrupting for.
       if (isLoggedIn && user) {
-        showActionSheet({
-          message: 'Sync this pet to your account now?',
-          options: [
-            {
-              label: 'Sync Now',
-              onPress: async () => {
-                try {
-                  await runSync(db, user.id);
-                  await refreshPets();
-                } catch (e) {
-                  console.error('[PetFormScreen] sync failed:', e);
-                  showToast('Sync failed — you can retry from Settings');
-                }
-                router.back();
-              },
+        // Alert.alert, not the custom ActionSheet — see onChangePhoto above
+        // for why (this screen is itself a `presentation: 'modal'`).
+        Alert.alert('Sync this pet to your account now?', undefined, [
+          {
+            text: 'Sync Now',
+            onPress: async () => {
+              try {
+                await runSync(db, user.id);
+                await refreshPets();
+              } catch (e) {
+                console.error('[PetFormScreen] sync failed:', e);
+                showToast('Sync failed — you can retry from Settings');
+              }
+              router.back();
             },
-            { label: 'Not Now', style: 'cancel', onPress: () => router.back() },
-          ],
-        });
+          },
+          { text: 'Not Now', style: 'cancel', onPress: () => router.back() },
+        ]);
       } else {
         router.back();
       }
@@ -135,11 +138,14 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
 
   const onDelete = () => {
     if (!pet) return;
-    showActionSheet({
-      message: `Delete ${pet.name}? This also removes all their records. This can't be undone.`,
-      options: [
+    // Alert.alert, not the custom ActionSheet — see onChangePhoto above for
+    // why (this screen is itself a `presentation: 'modal'`).
+    Alert.alert(
+      `Delete ${pet.name}?`,
+      "This also removes all their records. This can't be undone.",
+      [
         {
-          label: 'Delete Pet',
+          text: 'Delete Pet',
           style: 'destructive',
           onPress: async () => {
             try {
@@ -155,9 +161,9 @@ export function PetFormScreen({ pet }: { pet?: Pet }) {
             }
           },
         },
-        { label: 'Cancel', style: 'cancel', onPress: () => {} },
+        { text: 'Cancel', style: 'cancel' },
       ],
-    });
+    );
   };
 
   return (
