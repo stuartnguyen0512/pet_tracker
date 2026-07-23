@@ -1,6 +1,6 @@
-import { openDatabaseAsync, SQLiteDatabase } from 'expo-sqlite';
+import { openDatabaseAsync, SQLiteDatabase } from "expo-sqlite";
 
-const DB_NAME = 'pettracker.db';
+const DB_NAME = "pettracker.db";
 
 // Migrations indexed by version number.
 // Add a new entry (incrementing the key) for every future schema change —
@@ -51,7 +51,9 @@ const LATEST_VERSION = Math.max(...Object.keys(MIGRATIONS).map(Number));
 async function migrate(db: SQLiteDatabase): Promise<void> {
   // user_version is a built-in SQLite integer pragma — safe to interpolate
   // since we only ever write controlled integer literals here.
-  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  const row = await db.getFirstAsync<{ user_version: number }>(
+    "PRAGMA user_version",
+  );
   let version = row?.user_version ?? 0;
 
   while (version < LATEST_VERSION) {
@@ -66,9 +68,9 @@ async function migrate(db: SQLiteDatabase): Promise<void> {
 export async function initDatabase(): Promise<SQLiteDatabase> {
   const db = await openDatabaseAsync(DB_NAME);
 
-  await db.execAsync('PRAGMA journal_mode = WAL');
+  await db.execAsync("PRAGMA journal_mode = WAL");
   // Foreign-key enforcement is off by default in SQLite; must be set per connection.
-  await db.execAsync('PRAGMA foreign_keys = ON');
+  await db.execAsync("PRAGMA foreign_keys = ON");
 
   await migrate(db);
   return db;

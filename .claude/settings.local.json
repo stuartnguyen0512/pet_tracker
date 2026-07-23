@@ -46,7 +46,17 @@
       "mcp__claude_ai_Linear__list_issues",
       "mcp__claude_ai_Linear__get_issue",
       "Bash(git pull *)",
-      "Bash(gh pr create --title 'Add local sync scaffolding columns + runSync push/pull/merge \\(MIN-39\\)' --body ' *)"
+      "Bash(gh pr create --title 'Add local sync scaffolding columns + runSync push/pull/merge \\(MIN-39\\)' --body ' *)",
+      "mcp__0df0a952-7edd-47ac-a035-5121e64a5f49__get_issue",
+      "Bash(mkdir *)",
+      "Artifact",
+      "Bash(maestro --version)",
+      "WebFetch(domain:claude.ai)",
+      "Bash(git *)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "maestro"
+  ],
+  "enableAllProjectMcpServers": true
 }
