@@ -7,7 +7,7 @@ const STEPS = [
   {
     icon: '🐾',
     title: 'Add your pets',
-    body: 'Start with name, species, and a photo. Your first pet is always free.',
+    body: 'Start with name, species, and a photo. Free for 14 days, then $4.99/month.',
   },
   {
     icon: '📋',
