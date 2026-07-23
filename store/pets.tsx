@@ -114,7 +114,13 @@ export function PetsProvider({ children }: { children: React.ReactNode }) {
 
   const deletePet = useCallback(async (id: string): Promise<void> => {
     await Q.deletePet(db!, id);
-    setPets(prev => prev.filter(p => p.id !== id));
+    // Merge the tombstone into state (mirroring updatePet above) instead of
+    // filtering the pet out — Q.deletePet is a soft delete (deleted_at +
+    // dirty), and the pet list's pending-delete dimming relies on deletedAt
+    // surviving here until the next sync actually drops the row.
+    setPets(prev =>
+      prev.map(p => (p.id === id ? { ...p, dirty: true, deletedAt: new Date().toISOString() } : p)),
+    );
   }, [db]);
 
   // --- Record pass-throughs ---
