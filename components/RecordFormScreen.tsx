@@ -3,6 +3,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import {
+  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -15,7 +16,6 @@ import { colors } from '../constants/theme';
 import { RECORD_TYPES, recordTypeMeta } from '../constants/recordTypes';
 import { fromIsoDate, toIsoDate } from '../lib/dates';
 import { deletePhotoIfExists, persistPhoto } from '../lib/photos';
-import { useActionSheet } from '../store/actionSheet';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { HealthRecord, RecordType } from '../types';
@@ -45,7 +45,6 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
   const router = useRouter();
   const { createRecord, updateRecord, deleteRecord } = usePets();
   const { showToast } = useToast();
-  const { showActionSheet } = useActionSheet();
 
   const initialWeight = record?.type === 'Weight' ? splitWeightDetails(record.details) : { value: '', unit: 'kg' as const };
 
@@ -61,28 +60,33 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
   const canSave = !isWeight || weightValue.trim().length > 0;
 
   const onChangePhoto = () => {
-    showActionSheet({
-      options: [
-        {
-          label: 'Take Photo',
-          onPress: async () => {
-            const uri = await pickImage('camera');
-            if (uri) setPhoto(uri);
-          },
+    // Alert.alert, not the custom ActionSheet — this screen is itself a
+    // router-level `presentation: 'modal'` (pet/[id]/record/new,
+    // pet/[id]/record/[recordId]), and RN's Modal (which ActionSheet uses)
+    // fails to present nested inside a screen that's already shown as a
+    // native modal. Alert.alert is a native UIAlertController call, not a
+    // React-rendered overlay, so it doesn't hit that modal-inside-modal
+    // problem — same reasoning as Settings' logout confirmation.
+    Alert.alert('Add Photo', undefined, [
+      {
+        text: 'Take Photo',
+        onPress: async () => {
+          const uri = await pickImage('camera');
+          if (uri) setPhoto(uri);
         },
-        {
-          label: 'Choose from Library',
-          onPress: async () => {
-            const uri = await pickImage('library');
-            if (uri) setPhoto(uri);
-          },
+      },
+      {
+        text: 'Choose from Library',
+        onPress: async () => {
+          const uri = await pickImage('library');
+          if (uri) setPhoto(uri);
         },
-        ...(photo
-          ? [{ label: 'Remove Photo', style: 'destructive' as const, onPress: () => setPhoto(null) }]
-          : []),
-        { label: 'Cancel', style: 'cancel' as const, onPress: () => {} },
-      ],
-    });
+      },
+      ...(photo
+        ? [{ text: 'Remove Photo', style: 'destructive' as const, onPress: () => setPhoto(null) }]
+        : []),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
   };
 
   const onSave = async () => {
@@ -114,27 +118,26 @@ export function RecordFormScreen({ petId, record }: { petId: string; record?: He
 
   const onDelete = () => {
     if (!record) return;
-    showActionSheet({
-      message: "Delete this record? This can't be undone.",
-      options: [
-        {
-          label: 'Delete Record',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteRecord(record.id);
-              if (record.photo) deletePhotoIfExists(record.photo);
-              router.back();
-              showToast('Record deleted');
-            } catch (e) {
-              console.error('[RecordFormScreen] delete failed:', e);
-              showToast('Could not delete — please try again');
-            }
-          },
+    // Alert.alert, not the custom ActionSheet — see onChangePhoto above for
+    // why (this screen is itself a `presentation: 'modal'`).
+    Alert.alert('Delete this record?', "This can't be undone.", [
+      {
+        text: 'Delete Record',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteRecord(record.id);
+            if (record.photo) deletePhotoIfExists(record.photo);
+            router.back();
+            showToast('Record deleted');
+          } catch (e) {
+            console.error('[RecordFormScreen] delete failed:', e);
+            showToast('Could not delete — please try again');
+          }
         },
-        { label: 'Cancel', style: 'cancel', onPress: () => {} },
-      ],
-    });
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   const meta = recordTypeMeta(type);
