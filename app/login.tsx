@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -81,7 +82,11 @@ export default function LoginScreen() {
   };
 
   const onContinueWithApple = () => {
-    showToast('Apple Sign In coming soon');
+    // Alert.alert, not showToast — this screen is `presentation: 'modal'`,
+    // so a toast fired from in here (root-mounted, outside the Stack) is
+    // invisible, same as the sync-failure toasts noted above except those
+    // fire right before dismissTo('/') takes the user off this screen.
+    Alert.alert('Apple Sign In coming soon');
   };
 
   return (
