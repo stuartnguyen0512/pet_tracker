@@ -2,7 +2,7 @@ import { SQLiteDatabase } from 'expo-sqlite';
 import { supabase } from './supabaseClient';
 import { getSetting, setSetting, wipeLocalData } from '../db/queries';
 
-const LAST_SYNCED_AT_KEY = 'last_synced_at';
+export const LAST_SYNCED_AT_KEY = 'last_synced_at';
 const LOCAL_OWNER_ID_KEY = 'local_owner_id';
 const EPOCH = '1970-01-01T00:00:00.000Z';
 
