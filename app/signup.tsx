@@ -1,6 +1,7 @@
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -110,7 +111,9 @@ export default function SignupScreen() {
   };
 
   const onContinueWithApple = () => {
-    showToast('Apple Sign In coming soon');
+    // Alert.alert, not showToast — see the invisible-toast note above
+    // (this screen is `presentation: 'modal'`, same issue as Login).
+    Alert.alert('Apple Sign In coming soon');
   };
 
   return (

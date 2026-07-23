@@ -52,11 +52,14 @@
       "Artifact",
       "Bash(maestro --version)",
       "WebFetch(domain:claude.ai)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "mcp__maestro__take_screenshot",
+      "mcp__maestro__run",
+      "mcp__maestro__inspect_screen"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "maestro"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
