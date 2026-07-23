@@ -74,15 +74,13 @@ export default function PetListScreen() {
           <Text style={styles.avatarText}>{initialOf(item.name)}</Text>
         </View>
         <View style={styles.rowBody}>
-          <View style={styles.petNameRow}>
-            <Text style={styles.petName}>{item.name}</Text>
-            {!isPendingDelete && dirtyMap[item.id] && <View style={styles.unsyncedDot} />}
-          </View>
+          <Text style={styles.petName}>{item.name}</Text>
           {isPendingDelete ? (
             <Text style={styles.pendingDeleteLabel}>Deleting… (not synced yet)</Text>
           ) : (
             <Text style={styles.petMeta}>
               {item.species}{ageStr(item.birthdate) ? ` · ${ageStr(item.birthdate)}` : ''}
+              {dirtyMap[item.id] ? ' · Unsynced changes' : ''}
             </Text>
           )}
         </View>
@@ -202,21 +200,10 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
-  petNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   petName: {
     fontSize: 17,
     fontWeight: '600',
     color: colors.text,
-  },
-  unsyncedDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: colors.accent,
   },
   petMeta: {
     fontSize: 13,

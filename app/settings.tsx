@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { colors } from '../constants/theme';
 import * as Q from '../db/queries';
+import { timeAgo } from '../lib/dates';
 import { exportJson } from '../lib/export';
 import { initialOf } from '../lib/petDisplay';
-import { runSync } from '../lib/sync';
+import { LAST_SYNCED_AT_KEY, runSync } from '../lib/sync';
 import { usePets } from '../store/pets';
 import { useToast } from '../store/toast';
 import { useUiSession } from '../store/uiSession';
@@ -24,7 +25,12 @@ export default function SettingsScreen() {
   // invisible. Sync status has to live in the button itself instead, since
   // the button is guaranteed to be on top of whatever it's rendered inside.
   const [syncState, setSyncState] = useState<SyncState>('idle');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    Q.getSetting(db, LAST_SYNCED_AT_KEY).then(setLastSyncedAt);
+  }, [db]);
 
   useEffect(() => () => {
     if (resetTimer.current) clearTimeout(resetTimer.current);
@@ -107,6 +113,7 @@ export default function SettingsScreen() {
     try {
       await runSync(db, user.id);
       await refreshPets();
+      setLastSyncedAt(await Q.getSetting(db, LAST_SYNCED_AT_KEY));
       setSyncState('success');
     } catch (e) {
       console.error('[Settings] sync failed:', e);
@@ -191,7 +198,13 @@ export default function SettingsScreen() {
             <Text style={styles.syncButtonText}>Sync Now</Text>
           )}
         </Pressable>
-        <Text style={styles.exportHint}>{isLoggedIn ? 'Never synced.' : 'Log in to enable sync.'}</Text>
+        <Text style={styles.exportHint}>
+          {!isLoggedIn
+            ? 'Log in to enable sync.'
+            : lastSyncedAt
+              ? `Last synced ${timeAgo(lastSyncedAt)}`
+              : 'Never synced.'}
+        </Text>
 
         <Text style={styles.sectionLabel}>About</Text>
         <View style={styles.aboutCard}>
